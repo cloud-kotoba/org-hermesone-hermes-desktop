@@ -57,7 +57,8 @@ export default {
   aimlapiApiKey: "AIML API Key",
   aimlapiHint: "API key for AIML API",
   kotobaApiKey: "Kotoba Cloud API Token",
-  kotobaHint: "Kotoba Cloud inference — api.kotoba.cloud, personal API token from kotoba.cloud/account",
+  kotobaHint:
+    "Kotoba Cloud inference — api.kotoba.cloud, personal API token from kotoba.cloud/account",
   hermesoneApiKey: "Hermes One API Key",
   hermesoneHint: "Hermes One Inference — fast, credit-based gateway",
   openrouterApiKey: "OpenRouter API Key",

@@ -19,6 +19,7 @@ export default {
   noModel: "モデル未設定",
   skillsCount: "{{count}} スキル",
   gatewayRunning: "ゲートウェイ稼働中",
+  gatewayShared: "共有ゲートウェイが担当",
   gatewayOff: "ゲートウェイ停止",
   colProfile: "プロファイル",
   colModel: "モデル",

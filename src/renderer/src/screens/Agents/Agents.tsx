@@ -22,6 +22,7 @@ interface ProfileInfo {
   hasSoul: boolean;
   skillCount: number;
   gatewayRunning: boolean;
+  gatewayShared?: boolean;
   color?: string;
   avatar?: string | null;
 }
@@ -444,7 +445,9 @@ function Agents({
                   }`}
                   title={
                     p.gatewayRunning
-                      ? t("agents.gatewayRunning")
+                      ? p.gatewayShared
+                        ? t("agents.gatewayShared")
+                        : t("agents.gatewayRunning")
                       : t("agents.gatewayOff")
                   }
                 >

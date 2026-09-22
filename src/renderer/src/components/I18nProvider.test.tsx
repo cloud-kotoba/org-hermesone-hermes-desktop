@@ -66,9 +66,7 @@ describe("I18nProvider", () => {
       );
     });
 
-    expect(
-      await screen.findByText("Welcome to Kotoba"),
-    ).toBeInTheDocument();
+    expect(await screen.findByText("Welcome to Kotoba")).toBeInTheDocument();
   });
 
   it("renders Spanish translations after switching locale", async () => {

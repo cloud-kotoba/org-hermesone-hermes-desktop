@@ -18,6 +18,7 @@ import {
   PROFILE_NAME_ERROR,
 } from "./utils";
 import { HIDDEN_SUBPROCESS_OPTIONS } from "./process-options";
+import { multiplexerServesHome } from "./gateway-multiplex";
 import { readProfileMeta, defaultColorForName } from "./profile-meta";
 import { readProfileCronState, type ProfileCronState } from "./profile-cron";
 
@@ -48,6 +49,10 @@ export interface ProfileInfo {
   hasSoul: boolean;
   skillCount: number;
   gatewayRunning: boolean;
+  /** This fork: true when the profile has no gateway of its own because the
+   *  live default gateway serves it (gateway.multiplex_profiles). Still
+   *  `gatewayRunning` — this only says WHICH process is serving it. */
+  gatewayShared: boolean;
   /** This fork: the profile's cron scheduler state, or null without a
    *  cron directory (see profile-cron.ts). */
   cron: ProfileCronState | null;
@@ -147,6 +152,11 @@ async function countSkills(profilePath: string): Promise<number> {
 }
 
 async function isGatewayRunning(profilePath: string): Promise<boolean> {
+  // Under `gateway.multiplex_profiles` (the CLI default) no named profile owns
+  // a gateway.pid — one default gateway serves them all and records which in
+  // gateway_state.json. Ask that first, or every served profile reads "Off"
+  // while its bots are online (measured 2026-09-22: 92 of 93).
+  if (multiplexerServesHome(profilePath)) return true;
   const pidFile = join(profilePath, "gateway.pid");
   try {
     const raw = (await fs.readFile(pidFile, "utf-8")).trim();
@@ -210,6 +220,7 @@ export async function listProfiles(): Promise<ProfileInfo[]> {
     hasSoul: defaultHasSoul,
     skillCount: defaultSkills,
     gatewayRunning: defaultGw,
+    gatewayShared: false,
     cron: readProfileCronState(HERMES_HOME),
     color: defaultMeta.color || defaultColorForName("default"),
     avatar: defaultMeta.avatar || null,
@@ -254,6 +265,7 @@ export async function listProfiles(): Promise<ProfileInfo[]> {
           hasSoul: hasSoul,
           skillCount,
           gatewayRunning: gwRunning,
+          gatewayShared: multiplexerServesHome(profilePath),
           cron: readProfileCronState(profilePath),
           color: meta.color || defaultColorForName(name),
           avatar: meta.avatar || null,
