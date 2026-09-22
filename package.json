@@ -1,6 +1,6 @@
 {
   "name": "kotoba-desktop",
-  "version": "0.7.9",
+  "version": "0.7.10",
   "description": "Kotoba desktop app — Hermes Agent on Kotoba Cloud (fork of fathah/hermes-desktop)",
   "main": "./out/main/index.js",
   "author": "Kotoba Cloud",
