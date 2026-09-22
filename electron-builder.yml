@@ -61,6 +61,21 @@ mac:
   # No Developer ID Application certificate exists in this workspace yet
   # (only App Store distribution certs; see the fork README). Builds are
   # unsigned until one is obtained -- stated on the download page.
+  #
+  # `identity: null` is what MAKES that true, and it is here because the
+  # comment above was not enough. 0.7.10 shipped signed with `Apple
+  # Development: Created via API (62BW4Q57AB)`: electron-builder
+  # auto-discovers any codesigning identity in the login keychain, and four
+  # of them appeared on the build host after 0.7.9. It signed OVER
+  # build/afterPack.js's ad-hoc signature, so the published app carried a
+  # DEVELOPMENT certificate -- not a distribution identity, and worse on
+  # someone else's Mac than the ad-hoc build it replaced. Null makes
+  # electron-builder skip signing entirely, leaving afterPack's ad-hoc
+  # signature as the one that ships, whatever is in the keychain.
+  #
+  # Removing this line is only correct together with a real Developer ID
+  # Application certificate AND notarize: true.
+  identity: null
   notarize: false
 dmg:
   artifactName: ${name}-${version}-${arch}.${ext}
