@@ -26,6 +26,22 @@ export interface HermesOneCreditsResult {
   error?: string;
 }
 
+/** This fork's Kotoba Cloud account: the stored personal API token, proven
+ *  against kotoba.cloud. `live` false = the stored token no longer verifies
+ *  (revoked / unreachable — `error` says which). `balance` is ai credit in
+ *  USD, null when the token lacks billing:read (`error` names the scope). */
+export interface KotobaCloudAccount {
+  tokenId: string | null;
+  accountUrl: string;
+  live: boolean;
+  balance: number | null;
+  error?: string;
+}
+
+export type KotobaCloudConnectResult =
+  | { status: "connected"; account: KotobaCloudAccount }
+  | { status: "invalid" | "refused"; error: string };
+
 /** Emitted once the backend issues a device code, so the modal can show it. */
 export interface DeviceCodeInfo {
   userCode: string;

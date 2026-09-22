@@ -19,6 +19,7 @@ import {
 } from "./utils";
 import { HIDDEN_SUBPROCESS_OPTIONS } from "./process-options";
 import { readProfileMeta, defaultColorForName } from "./profile-meta";
+import { readProfileCronState, type ProfileCronState } from "./profile-cron";
 
 const PROFILES_DIR = join(HERMES_HOME, "profiles");
 
@@ -47,6 +48,9 @@ export interface ProfileInfo {
   hasSoul: boolean;
   skillCount: number;
   gatewayRunning: boolean;
+  /** This fork: the profile's cron scheduler state, or null without a
+   *  cron directory (see profile-cron.ts). */
+  cron: ProfileCronState | null;
   /** Resolved accent colour (stored override, else a stable default). */
   color: string;
   /** Avatar image as a data URL, or null when none is set. */
@@ -206,6 +210,7 @@ export async function listProfiles(): Promise<ProfileInfo[]> {
     hasSoul: defaultHasSoul,
     skillCount: defaultSkills,
     gatewayRunning: defaultGw,
+    cron: readProfileCronState(HERMES_HOME),
     color: defaultMeta.color || defaultColorForName("default"),
     avatar: defaultMeta.avatar || null,
   });
@@ -249,6 +254,7 @@ export async function listProfiles(): Promise<ProfileInfo[]> {
           hasSoul: hasSoul,
           skillCount,
           gatewayRunning: gwRunning,
+          cron: readProfileCronState(profilePath),
           color: meta.color || defaultColorForName(name),
           avatar: meta.avatar || null,
         } as ProfileInfo;

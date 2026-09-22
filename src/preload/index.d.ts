@@ -19,6 +19,8 @@ import type {
   HermesAccount,
   HermesAccountUser,
   HermesOneCreditsResult,
+  KotobaCloudAccount,
+  KotobaCloudConnectResult,
 } from "../shared/account";
 import type { AgentSyncResult, AgentSyncStatus } from "../shared/agent-sync";
 import type { ConnectionStatusSnapshot } from "../shared/connection-status";
@@ -326,6 +328,14 @@ interface HermesAPI {
   accountLogout: (profile?: string) => Promise<{ success: boolean }>;
   ensureHermesOneKey: (profile?: string) => Promise<EnsureHermesOneKeyResult>;
   getHermesOneCredits: () => Promise<HermesOneCreditsResult>;
+  getKotobaCloudAccount: (
+    profile?: string,
+  ) => Promise<KotobaCloudAccount | null>;
+  connectKotobaCloud: (
+    token: string,
+    profile?: string,
+  ) => Promise<KotobaCloudConnectResult>;
+  disconnectKotobaCloud: (profile?: string) => Promise<{ success: boolean }>;
 
   // Cloud agent sync (profiles ↔ signed-in Hermes One account)
   syncAgents: () => Promise<AgentSyncResult>;
@@ -731,6 +741,18 @@ interface HermesAPI {
       hasSoul: boolean;
       skillCount: number;
       gatewayRunning: boolean;
+      /** This fork: the profile's cron scheduler state (jobs, in-flight
+       *  attempts, last / next run, last failure), or null when the profile
+       *  has no cron directory. Absent on SSH/remote profiles. */
+      cron?: {
+        jobs: number;
+        running: number;
+        lastRunAt: string | null;
+        lastStatus: "ok" | "error" | null;
+        lastError: string | null;
+        nextRunAt: string | null;
+        failedJobs: string[];
+      } | null;
       /** Resolved accent colour; absent on SSH/remote profiles. */
       color?: string;
       /** Avatar data URL, or null/absent when none is set. */

@@ -15,23 +15,15 @@ import {
 import { useI18n } from "../../components/useI18n";
 import BrandLogo from "../../components/common/BrandLogo";
 import OAuthLoginModal from "../../components/OAuthLoginModal";
-import HermesAccountModal from "../../components/HermesAccountModal";
+import KotobaCloudAccountModal from "../../components/KotobaCloudAccountModal";
 import ProviderKeysSection from "../../components/ProviderKeysSection";
 import RegistryBrowserModal from "../../components/RegistryBrowserModal";
 import AuxiliaryTasksSection from "../../components/AuxiliaryTasksSection";
 import { useDiscoveredModels } from "../../hooks/useDiscoveredModels";
 import { KeyRound, Workflow, User } from "../../assets/icons";
-import {
-  ChevronDown,
-  X,
-  LayoutGrid,
-  RefreshCw,
-  Eye,
-  EyeOff,
-  Coins,
-} from "lucide-react";
+import { ChevronDown, X, LayoutGrid, Eye, EyeOff, Coins } from "lucide-react";
 import { customProviderEnvKey } from "../../../../shared/url-key-map";
-import type { HermesAccount } from "../../../../shared/account";
+import type { KotobaCloudAccount } from "../../../../shared/account";
 
 /** Preview a stored key as prefix + dots + last 4, so a set key is recognisable
  * without exposing it. */
@@ -189,51 +181,26 @@ function Providers({
     (typeof OAUTH_PROVIDERS)[number] | null
   >(null);
 
-  // Hermes account (device login). `account` is the signed-in profile or null.
-  const [account, setAccount] = useState<HermesAccount | null>(null);
+  // Kotoba Cloud account (this fork): the profile's KOTOBA_API_KEY, proven
+  // against kotoba.cloud on every read. `account` is null when no token is
+  // stored; `account.live` false when the stored one no longer verifies.
+  // The upstream Hermes One device login (getAccount / ensureHermesOneKey /
+  // getHermesOneCredits) still exists in the main process but has no card
+  // here — this app's account is Kotoba Cloud's.
+  const [account, setAccount] = useState<KotobaCloudAccount | null>(null);
   const [showAccountModal, setShowAccountModal] = useState(false);
-  // AI-credit balance for the account card (null = signed out / unavailable).
-  const [credits, setCredits] = useState<number | null>(null);
   useEffect(() => {
     let cancelled = false;
-    void window.hermesAPI.getAccount(profile).then((a) => {
-      if (!cancelled) setAccount(a);
-    });
-    return () => {
-      cancelled = true;
-    };
-  }, [profile]);
-
-  // Hermes One convenience layer: with a signed-in account, surface the
-  // credit balance and make sure the profile has an auto-provisioned
-  // HERMESONE_API_KEY (no-op when one exists; the main process guards
-  // remote/SSH modes). A freshly created key means the env just changed
-  // under us — re-read it so the Hermes One card + picker appear now, not
-  // on the next visit.
-  useEffect(() => {
-    let cancelled = false;
-    if (!account) {
-      setCredits(null);
-      return;
-    }
     void window.hermesAPI
-      .getHermesOneCredits()
-      .then((r) => {
-        if (!cancelled) setCredits(r.balance);
-      })
-      .catch(() => {});
-    void window.hermesAPI
-      .ensureHermesOneKey(profile)
-      .then(async (r) => {
-        if (r.status !== "created" || cancelled) return;
-        const envData = await window.hermesAPI.getEnv(profile);
-        if (!cancelled) setEnv(envData);
+      .getKotobaCloudAccount(profile)
+      .then((a) => {
+        if (!cancelled) setAccount(a);
       })
       .catch(() => {});
     return () => {
       cancelled = true;
     };
-  }, [account, profile]);
+  }, [profile, env.KOTOBA_API_KEY]);
 
   // Per-key debounce timers for env auto-save on change. Previously env
   // values were persisted only on input blur, so users who clicked the
@@ -687,59 +654,55 @@ function Providers({
         <>
           <div className="settings-section">
             <div className="settings-section-title">
-              {t("providers.hermesAccount.sectionTitle")}
+              {t("providers.kotobaAccount.sectionTitle")}
             </div>
             {!account && (
               <p className="settings-section-hint">
-                {t("providers.hermesAccount.sectionHint")}
+                {t("providers.kotobaAccount.sectionHint")}
               </p>
             )}
             {account ? (
               <div className="hermes-account-card">
-                {account.user.avatarUrl ? (
-                  <img
-                    className="hermes-account-avatar"
-                    src={account.user.avatarUrl}
-                    alt=""
-                    referrerPolicy="no-referrer"
-                  />
-                ) : (
-                  <span
-                    className="hermes-account-avatar hermes-account-avatar-letter"
-                    aria-hidden="true"
-                  >
-                    {(account.user.name || account.user.email || "?")
-                      .charAt(0)
-                      .toUpperCase()}
-                  </span>
-                )}
-                <span className="hermes-account-who">
-                  <span className="hermes-account-name">
-                    {account.user.name || account.user.email || account.user.id}
-                  </span>
-                  {account.user.name && account.user.email && (
+                <span className="hermes-account-avatar hermes-account-avatar-fallback">
+                  こ
+                </span>
+                <span className="hermes-account-meta">
+                  <span className="hermes-account-name">Kotoba Cloud</span>
+                  {account.tokenId && (
                     <span className="hermes-account-email">
-                      {account.user.email}
+                      {t("providers.kotobaAccount.token", {
+                        id: account.tokenId,
+                      })}
                     </span>
                   )}
                   <span className="hermes-account-chips">
-                    <span className="hermes-account-chip is-connected">
+                    <span
+                      className={`hermes-account-chip ${account.live ? "is-connected" : ""}`}
+                      title={account.live ? undefined : account.error}
+                    >
                       <span className="hermes-account-dot" aria-hidden="true" />
-                      {t("providers.hermesAccount.connected")}
+                      {account.live
+                        ? t("providers.kotobaAccount.connected")
+                        : t("providers.kotobaAccount.notLive")}
                     </span>
-                    <span className="hermes-account-chip">
-                      <RefreshCw size={11} aria-hidden="true" />
-                      {t("providers.hermesAccount.syncOn")}
-                    </span>
-                    {credits !== null && (
+                    {account.live && account.balance !== null && (
                       <span
                         className="hermes-account-chip"
-                        title={t("providers.hermesAccount.creditsTitle")}
+                        title={t("providers.kotobaAccount.creditsTitle")}
                       >
                         <Coins size={11} aria-hidden="true" />
-                        {t("providers.hermesAccount.credits", {
-                          amount: credits.toFixed(2),
+                        {t("providers.kotobaAccount.credits", {
+                          amount: account.balance.toFixed(2),
                         })}
+                      </span>
+                    )}
+                    {account.live && account.balance === null && (
+                      <span
+                        className="hermes-account-chip"
+                        title={t("providers.kotobaAccount.creditsUnknownTitle")}
+                      >
+                        <Coins size={11} aria-hidden="true" />
+                        {t("providers.kotobaAccount.creditsUnknown")}
                       </span>
                     )}
                   </span>
@@ -747,12 +710,23 @@ function Providers({
                 <button
                   type="button"
                   className="btn btn-secondary btn-sm"
+                  onClick={() =>
+                    void window.hermesAPI.openExternal(account.accountUrl)
+                  }
+                >
+                  {t("providers.kotobaAccount.manage")}
+                </button>
+                <button
+                  type="button"
+                  className="btn btn-secondary btn-sm"
                   onClick={async () => {
-                    await window.hermesAPI.accountLogout(profile);
+                    await window.hermesAPI.disconnectKotobaCloud(profile);
                     setAccount(null);
+                    const envData = await window.hermesAPI.getEnv(profile);
+                    setEnv(envData);
                   }}
                 >
-                  {t("providers.hermesAccount.signOut")}
+                  {t("providers.kotobaAccount.signOut")}
                 </button>
               </div>
             ) : (
@@ -762,7 +736,7 @@ function Providers({
                 onClick={() => setShowAccountModal(true)}
               >
                 <User size={14} />
-                {t("providers.hermesAccount.signIn")}
+                {t("providers.kotobaAccount.signIn")}
               </button>
             )}
           </div>
@@ -1097,12 +1071,14 @@ function Providers({
           )}
 
           {showAccountModal && (
-            <HermesAccountModal
+            <KotobaCloudAccountModal
               profile={profile}
               onClose={() => setShowAccountModal(false)}
-              onSignedIn={() => {
-                // Refetch to get the full stored account (apiUrl + user).
-                void window.hermesAPI.getAccount(profile).then(setAccount);
+              onConnected={(a) => {
+                setAccount(a);
+                // the token is now the profile's KOTOBA_API_KEY: re-read the
+                // env so the Kotoba Cloud provider card shows it as set
+                void window.hermesAPI.getEnv(profile).then(setEnv);
               }}
             />
           )}

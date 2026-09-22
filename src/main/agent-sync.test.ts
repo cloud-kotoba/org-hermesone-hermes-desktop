@@ -157,6 +157,7 @@ function fakeProfile(name: string, color = "#123456", id = name): ProfileInfo {
     hasSoul: true,
     skillCount: 0,
     gatewayRunning: false,
+    cron: null,
     color,
     avatar: null,
   };

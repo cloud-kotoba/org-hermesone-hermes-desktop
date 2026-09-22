@@ -30,6 +30,8 @@ import type {
   HermesAccount,
   HermesAccountUser,
   HermesOneCreditsResult,
+  KotobaCloudAccount,
+  KotobaCloudConnectResult,
 } from "../shared/account";
 import type { AgentSyncResult, AgentSyncStatus } from "../shared/agent-sync";
 import type { GpuPreferenceMode, GpuStatus } from "../shared/gpu";
@@ -284,6 +286,20 @@ const hermesAPI = {
     ipcRenderer.invoke("hermesone-ensure-key", profile),
   getHermesOneCredits: (): Promise<HermesOneCreditsResult> =>
     ipcRenderer.invoke("hermesone-credits"),
+
+  // Kotoba Cloud account (this fork): the profile's personal API token,
+  // verified against kotoba.cloud on connect and on every read.
+  getKotobaCloudAccount: (
+    profile?: string,
+  ): Promise<KotobaCloudAccount | null> =>
+    ipcRenderer.invoke("kotoba-cloud-account-get", profile),
+  connectKotobaCloud: (
+    token: string,
+    profile?: string,
+  ): Promise<KotobaCloudConnectResult> =>
+    ipcRenderer.invoke("kotoba-cloud-account-connect", token, profile),
+  disconnectKotobaCloud: (profile?: string): Promise<{ success: boolean }> =>
+    ipcRenderer.invoke("kotoba-cloud-account-disconnect", profile),
 
   // Cloud agent sync (profiles ↔ signed-in Hermes One account)
   syncAgents: (): Promise<AgentSyncResult> =>
@@ -998,6 +1014,15 @@ const hermesAPI = {
       hasSoul: boolean;
       skillCount: number;
       gatewayRunning: boolean;
+      cron?: {
+        jobs: number;
+        running: number;
+        lastRunAt: string | null;
+        lastStatus: "ok" | "error" | null;
+        lastError: string | null;
+        nextRunAt: string | null;
+        failedJobs: string[];
+      } | null;
       color?: string;
       avatar?: string | null;
     }>

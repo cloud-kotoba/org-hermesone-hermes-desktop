@@ -20,6 +20,8 @@ the [LICENSE](LICENSE) is upstream's MIT notice and applies to this fork.
 |---|---|---|
 | product / bundle | `Hermes One`, `com.nousresearch.hermes` | `Kotoba`, `cloud.kotoba.desktop` |
 | first provider card | Hermes One Inference (`inference.hermesone.org`) | **Kotoba Cloud** (`api.kotoba.cloud/v1`, env `KOTOBA_API_KEY`); Hermes One stays as the second card |
+| account | "Hermes One account" — device login (RFC 8628) to upstream's backend, cloud agent sync, wallets | **Kotoba Cloud account**: Passkey sign-in happens in the browser on `kotoba.cloud/account`, the personal API token (`kc_pat_…`) is pasted into the app, proven against `GET /v1/billing/status`, stored as `KOTOBA_API_KEY` (= the provider key), balance shown. Upstream's device login stays in the main process but has no card |
+| office decal | `HERMES ONE HQ` on the south wall | `KOTOBA HQ` (`kotoba-hq.webp`, same canvas) |
 | auto-update feed | upstream GitHub releases | `https://app.kotoba.cloud/download/` (electron-updater `generic`) — a fork that kept upstream's feed would update itself back into Hermes One |
 | icons / splash | Hermes One mark | the kotoba-lang mark (`src/renderer/src/assets/kotoba-mark.svg`, drawn from the 110 px org avatar) and the KOTOBA wordmark |
 | Linux targets | AppImage, snap, deb, rpm | AppImage, deb (snapcraft / rpmbuild are not on the macOS build hosts) |
@@ -32,6 +34,14 @@ talk to upstream's backend and are left as they are.
 
 The app name is still overridable at runtime with `HERMES_DESKTOP_APP_NAME`
 (main) / `VITE_HERMES_DESKTOP_APP_NAME` (renderer), as upstream allows.
+
+## Versioning
+
+The fork's version advances upstream's patch number (`0.7.7` → `0.7.8` for
+the first fork-only release) so that electron-updater, which compares
+semver, moves installed apps forward; a prerelease tag (`0.7.7-kotoba.1`)
+would sort *below* upstream's `0.7.7` and never update anyone. When upstream
+ships a version at or above ours, merge it and take the higher number.
 
 ## Download
 
