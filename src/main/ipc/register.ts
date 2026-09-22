@@ -116,6 +116,7 @@ import {
   openKotobaCloudSignIn,
   signOutKotobaCloud,
 } from "../kotoba-cloud-session";
+import { restartGatewayWhenIdle } from "../gateway-restart-defer";
 import {
   kotobaGatewayStatus,
   launchKotobaGateway,
@@ -1044,7 +1045,7 @@ export function registerIpcHandlers(context: IpcContext): void {
       const target = profile?.trim() || getActiveProfileNameSync();
       const result = await connectKotobaCloud(token, target);
       if (result.status === "connected" && isGatewayRunning(target)) {
-        restartGateway(target); // the gateway reads .env at start
+        void restartGatewayWhenIdle(target, restartGateway);
       }
       return result;
     },
@@ -1065,7 +1066,7 @@ export function registerIpcHandlers(context: IpcContext): void {
     const issued = await issueDesktopToken();
     const result = await connectKotobaCloud(issued.token, target);
     if (result.status === "connected" && isGatewayRunning(target)) {
-      restartGateway(target);
+      void restartGatewayWhenIdle(target, restartGateway);
     }
     return { viewer, tokenId: issued.tokenId, result };
   });
@@ -1179,7 +1180,7 @@ export function registerIpcHandlers(context: IpcContext): void {
         key.endsWith("_TOKEN") ||
         key === "HF_TOKEN";
       if (isGatewayRunning(profile) && looksLikeCredential) {
-        restartGateway(profile);
+        void restartGatewayWhenIdle(profile, restartGateway);
       }
       return true;
     },
@@ -1270,7 +1271,7 @@ export function registerIpcHandlers(context: IpcContext): void {
                 prev.model !== model ||
                 prev.baseUrl !== baseUrl)
             ) {
-              restartGateway(profile);
+              void restartGatewayWhenIdle(profile, restartGateway);
             }
             return true;
           },
@@ -1328,7 +1329,7 @@ export function registerIpcHandlers(context: IpcContext): void {
           prev.model !== model ||
           prev.baseUrl !== baseUrl)
       ) {
-        restartGateway(profile);
+        void restartGatewayWhenIdle(profile, restartGateway);
       }
 
       return true;
@@ -1362,7 +1363,7 @@ export function registerIpcHandlers(context: IpcContext): void {
 
       // Restart gateway so it picks up the new auxiliary config
       if (isGatewayRunning(profile)) {
-        restartGateway(profile);
+        void restartGatewayWhenIdle(profile, restartGateway);
       }
 
       return true;
@@ -1379,7 +1380,7 @@ export function registerIpcHandlers(context: IpcContext): void {
 
     // Restart gateway so it picks up the reset
     if (isGatewayRunning(profile)) {
-      restartGateway(profile);
+      void restartGatewayWhenIdle(profile, restartGateway);
     }
 
     return true;
@@ -2296,7 +2297,7 @@ export function registerIpcHandlers(context: IpcContext): void {
       setPlatformEnabled(platform, enabled, profile);
       // Restart gateway so it picks up the new platform config
       if (isGatewayRunning(profile)) {
-        restartGateway(profile);
+        void restartGatewayWhenIdle(profile, restartGateway);
       }
       return true;
     },
@@ -2375,7 +2376,7 @@ export function registerIpcHandlers(context: IpcContext): void {
           ),
       );
       if (isGatewayRunning(profile)) {
-        restartGateway(profile);
+        void restartGatewayWhenIdle(profile, restartGateway);
       }
       return { ok: true, platform };
     },
