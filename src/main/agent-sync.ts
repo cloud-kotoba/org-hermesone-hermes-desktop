@@ -3,11 +3,11 @@ import { createHash } from "crypto";
 import { readFileSync, statSync, unlinkSync } from "fs";
 import { join } from "path";
 import {
-  findAccountProfile,
-  getAccount,
-  getAccessToken,
-} from "./account-store";
-import { apiHeaders } from "./hermes-account";
+  KOTOBA_CLOUD_ORIGIN,
+  KOTOBA_API_KEY_ENV,
+  kotobaPrincipalId,
+} from "./kotoba-cloud-account";
+import { readEnv } from "./config";
 import {
   listProfiles,
   createProfile,
@@ -30,9 +30,9 @@ import type {
   AgentSyncStatus,
 } from "../shared/agent-sync";
 
-// Syncs desktop profiles (the app's "agents") with the signed-in Hermes One
-// account's cloud agents (backend /api/agents CRUD, bearer-authenticated with
-// the device-login token). Phase 1 scope — the free parts from the backend's
+// Syncs desktop profiles (the app's "agents") with the owner's Kotoba Cloud
+// agents (kotoba.cloud /v1/agents CRUD, bearer-authenticated with this
+// machine's personal API token). Phase 1 scope — the free parts from the backend's
 // docs/agent-sync.md: color, persona (SOUL.md ↔ systemPrompt), memory
 // (memories/MEMORY.md ↔ memory), and config basics (model/provider). Names are
 // used to link and create, never to rename. Deletions never propagate: a cloud
@@ -339,7 +339,8 @@ async function api(
   const res = await fetch(`${apiUrl}${path}`, {
     method,
     headers: {
-      ...apiHeaders(body !== undefined),
+      accept: "application/json",
+      ...(body !== undefined ? { "content-type": "application/json" } : {}),
       authorization: `Bearer ${token}`,
     },
     body: body !== undefined ? JSON.stringify(body) : undefined,
@@ -464,14 +465,37 @@ let running = false;
 let activeSync: Promise<AgentSyncResult> | null = null;
 let lastResult: AgentSyncResult | null = null;
 
+/**
+ * The Kotoba Cloud account this desktop syncs to, or null when it has none.
+ *
+ * There is no separate user record to read: kotoba.cloud signs a person in
+ * with a Passkey in the browser and the desktop's account IS the personal
+ * API token it issued from that session (kotoba-cloud-account). So the token
+ * is the credential AND the identity — its principal segment is the
+ * `accountId` that keeps one machine's links from being applied against
+ * somebody else's agents.
+ *
+ * The token is the DEFAULT profile's, deliberately: sync is device-wide, and
+ * reading it per-profile would make "which agents am I backing up" depend on
+ * which agent happened to be selected.
+ */
+function cloudAccount(): {
+  apiUrl: string;
+  accountId: string;
+  token: string;
+} | null {
+  const token = (readEnv(undefined)[KOTOBA_API_KEY_ENV] || "").trim();
+  if (!token) return null;
+  const accountId = kotobaPrincipalId(token);
+  if (!accountId) return null;
+  return { apiUrl: KOTOBA_CLOUD_ORIGIN, accountId, token };
+}
+
 export function getAgentSyncStatus(): AgentSyncStatus {
-  const accountProfile = findAccountProfile();
-  const account = accountProfile ? getAccount(accountProfile) : null;
+  const account = cloudAccount();
   return {
     signedIn: account !== null,
-    accountLabel: account
-      ? (account.user.email ?? account.user.name ?? account.user.id)
-      : null,
+    accountLabel: account ? account.accountId : null,
     running,
     lastResult,
   };
@@ -543,12 +567,11 @@ async function runSyncPass(): Promise<AgentSyncResult> {
     finishedAt: Date.now(),
   });
 
-  const accountProfile = findAccountProfile();
-  const account = accountProfile ? getAccount(accountProfile) : null;
-  const token = accountProfile ? getAccessToken(accountProfile) : null;
-  if (!account || !token) {
+  const account = cloudAccount();
+  if (!account) {
     return finished({ status: "signed-out", outcomes: [] });
   }
+  const token = account.token;
 
   let deletedLinks: DeletedLink[];
   try {
@@ -562,7 +585,7 @@ async function runSyncPass(): Promise<AgentSyncResult> {
   }
   let remotes: RemoteAgent[];
   try {
-    const res = await api(account.apiUrl, token, "GET", "/api/agents");
+    const res = await api(account.apiUrl, token, "GET", "/v1/agents");
     if (res.status === 401)
       return finished({ status: "unauthorized", outcomes: [] });
     if (!res.ok) {
@@ -603,7 +626,7 @@ async function runSyncPass(): Promise<AgentSyncResult> {
   const linked: Linked[] = [];
   const unlinkedLocals: ProfileInfo[] = [];
 
-  const userId = account.user.id;
+  const userId = account.accountId;
   for (const profile of profiles) {
     const state = readSyncState(profile.id);
     if (state) {
@@ -725,7 +748,7 @@ async function runSyncPass(): Promise<AgentSyncResult> {
             account.apiUrl,
             token,
             "PATCH",
-            `/api/agents/${agent.id}`,
+            `/v1/agents/${agent.id}`,
             body,
           );
           if (!res.ok) {
@@ -786,7 +809,7 @@ async function runSyncPass(): Promise<AgentSyncResult> {
       const name = profile.name.slice(0, MAX_NAME_CHARS);
       const { body, skipped } = buildPushBody(PARTS, local);
       warnings.push(...skipped);
-      const res = await api(account.apiUrl, token, "POST", "/api/agents", {
+      const res = await api(account.apiUrl, token, "POST", "/v1/agents", {
         ...body,
         name,
       });

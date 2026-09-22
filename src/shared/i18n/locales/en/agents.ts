@@ -93,15 +93,15 @@ export default {
   syncing: "Syncing…",
   syncSignedOut: "Not synced",
   syncSignedOutHint:
-    "Sign in to your Hermes One account on the Providers page to back agents up to the cloud.",
-  syncUpToDate: "Synced with your Hermes One account",
+    "Connect your Kotoba Cloud account on the Providers page to back agents up to the cloud.",
+  syncUpToDate: "Synced with your Kotoba Cloud account",
   syncSummary: "Synced — {{pushed}} pushed, {{pulled}} pulled, {{created}} new",
   syncErrors: "Sync finished with {{count}} error(s)",
   syncUnauthorized: "Session expired — sign in again on the Providers page",
   syncFailed: "Sync failed",
   syncTitle: "Cloud sync",
   syncPaneSubtitle:
-    "Back this agent up to your Hermes One account and pull changes made in the console.",
+    "Back this agent up to your Kotoba Cloud account and pull changes made on kotoba.cloud.",
   syncNow: "Sync now",
   syncAccount: "Account",
   syncLink: "Cloud agent",
@@ -109,7 +109,7 @@ export default {
   syncNotLinked: "Not linked yet — sync to create it",
   syncLastResult: "Last sync",
   syncSignInHint:
-    "Sign in to your Hermes One account on the Providers page to sync this agent.",
+    "Connect your Kotoba Cloud account on the Providers page to sync this agent.",
   syncAction: {
     "up-to-date": "Up to date",
     pushed: "Pushed to cloud",

@@ -21,7 +21,10 @@ beforeEach(() => resetGatewayRestartDeferrals());
 
 /** A clock and a sleep that advance together, so a 10-minute cap is a
  *  handful of arithmetic rather than ten minutes of test. */
-function fakeClock() {
+function fakeClock(): {
+  now: () => number;
+  sleep: (ms: number) => Promise<void>;
+} {
   let t = 0;
   return {
     now: () => t,
@@ -134,7 +137,7 @@ describe("restartGatewayWhenIdle", () => {
   });
 
   it("holds one deferral per profile, not one for the whole app", async () => {
-    let restarts: string[] = [];
+    const restarts: string[] = [];
     const restart = async (p?: string): Promise<void> => {
       restarts.push(p ?? "default");
     };

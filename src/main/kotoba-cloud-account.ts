@@ -32,6 +32,19 @@ export const KOTOBA_API_KEY_ENV = "KOTOBA_API_KEY";
 const TOKEN_RE = /^kc_pat_[^.\s]+\.([0-9a-f]{12})\.[^\s]+$/;
 const BILLING_STATUS_PATH = "/v1/billing/status";
 
+/**
+ * The principal a `kc_pat_` token belongs to — the segment between the prefix
+ * and the token id. It is the account identity the desktop has: there is no
+ * separate user record to read, because the token IS the account here.
+ * Returns null for anything that is not a token of this shape.
+ */
+export function kotobaPrincipalId(token: string): string | null {
+  const t = token.trim();
+  if (!TOKEN_RE.test(t)) return null;
+  const principal = t.slice("kc_pat_".length).split(".")[0];
+  return principal.length > 0 ? principal : null;
+}
+
 /** The 12-hex token id inside a `kc_pat_` token, or null for any other shape. */
 export function kotobaTokenId(token: string): string | null {
   const m = TOKEN_RE.exec(token.trim());

@@ -1,8 +1,18 @@
 # Cloud agent sync
 
-Syncs desktop profiles (the app's agents) with the signed-in [[hermes-account-login|Hermes One account]]'s cloud agents, bidirectionally, via the backend's `/api/agents` CRUD.
+Syncs desktop profiles (the app's agents) with the owner's [[kotoba-cloud-account|Kotoba Cloud account]]'s cloud agents, bidirectionally, via kotoba.cloud's `/v1/agents` CRUD.
 
 Phase 1 covers the free parts from the backend's `docs/agent-sync.md`: color, persona (`SOUL.md` ↔ `systemPrompt`), memory (`memories/MEMORY.md` ↔ `memory`), and config basics (`model`/`provider` only — never the whole `config.yaml`, so no secrets leave the device). Skills, automations, and sessions are deferred. Deletions never propagate in either direction. Local profile deletion records a device-side exclusion so the retained cloud copy is not automatically restored.
+
+## The account is the token
+
+kotoba.cloud has no device-code or OAuth flow to reuse — the workspace's human-authentication policy makes those non-authorities — so the desktop's account IS the personal API token it issued from a Passkey session.
+
+[[src/main/agent-sync.ts#cloudAccount]] reads it from the DEFAULT profile's `KOTOBA_API_KEY`: the token is the credential and, through its principal segment ([[src/main/kotoba-cloud-account.ts#kotobaPrincipalId]]), the `accountId` that keeps one machine's links from being applied against somebody else's agents. Sync is device-wide, so reading it per-profile would make "which agents am I backing up" depend on which agent happened to be selected.
+
+The token must carry the `agents` scope; [[src/main/kotoba-cloud-session.ts#issueDesktopToken]] asks for it alongside `inference` and `billing:read`. A token issued before that scope existed is refused by name (`token-scope-insufficient`) rather than failing as an outage.
+
+Wallets are NOT on this plane: they stay with the Hermes One account (there is no wallet API on kotoba.cloud), which is why [[src/main/wallet-sync.ts]] still reads `account-store`.
 
 ## Sync engine
 
