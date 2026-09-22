@@ -49,6 +49,7 @@ import {
   getActiveProfileNameSync,
 } from "./utils";
 import { getProfilePort } from "./gateway-ports";
+import { multiplexerServes } from "./gateway-multiplex";
 import { promptSudoPassword, promptSecretValue } from "./gatewayPrompt";
 import { getSecret } from "./secrets";
 import { readModels } from "./models";
@@ -3538,6 +3539,17 @@ export function startGatewayDetailed(profile?: string): GatewayStartResult {
     return { success: true, running: true, alreadyRunning: true };
   }
 
+  // A profile the live multiplexer serves has no gateway of its own to start:
+  // the CLI refuses the spawn ("The default gateway is running as a profile
+  // multiplexer and already serves profile '<name>'", exit 78), so spawning
+  // here only writes a refusal into the log and leaves the caller's spinner
+  // waiting for a pid file that will never appear. isGatewayRunning() above
+  // already answers true for those; this stays as the explicit guard for the
+  // window where the record appears between the two reads.
+  if (multiplexerServes(profile)) {
+    return { success: true, running: true, alreadyRunning: true };
+  }
+
   // Pre-flight: verify the Python interpreter exists before attempting to
   // spawn. Without this check, spawn() fails with ENOENT and the error is
   // completely silent (stdio:"ignore", no error handler).
@@ -3755,8 +3767,11 @@ export function isGatewayRunning(profile?: string): boolean {
   const proc = gatewayProcesses.get(profileKey(profile));
   if (proc && isChildProcessAlive(proc)) return true;
   const pid = readPidFile(profile);
-  if (!pid) return false;
-  return pidIsAliveAs(pid, GATEWAY_IMAGE_PREFIXES);
+  if (pid && pidIsAliveAs(pid, GATEWAY_IMAGE_PREFIXES)) return true;
+  // No pid file of its own does NOT mean off: with
+  // `gateway.multiplex_profiles` on, one default gateway is the inbound
+  // process for every profile and records which ones in gateway_state.json.
+  return multiplexerServes(profile);
 }
 
 export function isApiReady(): boolean {

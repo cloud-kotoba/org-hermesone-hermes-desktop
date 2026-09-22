@@ -19,6 +19,7 @@ export default {
   noModel: "No model set",
   skillsCount: "{{count}} skills",
   gatewayRunning: "Gateway running",
+  gatewayShared: "Served by the shared gateway",
   gatewayOff: "Gateway off",
   colProfile: "Profile",
   colModel: "Model",
