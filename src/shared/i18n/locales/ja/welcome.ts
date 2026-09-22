@@ -1,5 +1,5 @@
 export default {
-  title: "Hermes へようこそ",
+  title: "Kotoba へようこそ",
   subtitle:
     "あなたのマシンでローカル実行する自己進化型 AI アシスタント。プライベートで、強力で、常に学習します。",
   installIssueTitle: "インストールの問題",

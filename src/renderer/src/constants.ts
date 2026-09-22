@@ -87,6 +87,7 @@ export const PROVIDERS = {
   ],
 
   labels: {
+    kotoba: "Kotoba Cloud",
     hermesone: "Hermes One",
     atlascloud: "AtlasCloud",
     novita: "NovitaAI",
@@ -130,13 +131,29 @@ export const PROVIDERS = {
 
   setup: [
     {
-      // Hermes One's own inference gateway — shown first. OpenAI-compatible, so
+      // Kotoba Cloud — this fork's own inference plane, shown first. OpenAI-
+      // compatible (api.kotoba.cloud/v1), so it routes through `custom` +
+      // base_url like Hermes One; the key is a kotoba.cloud personal API
+      // token (kc_pat_…, issued at kotoba.cloud/account) stored/host-derived
+      // as KOTOBA_API_KEY (see url-key-map.ts).
+      id: "kotoba",
+      name: "Kotoba Cloud",
+      desc: "Kotoba Cloud inference — pay-per-token with ai credit",
+      tag: "Recommended",
+      envKey: "KOTOBA_API_KEY",
+      url: "https://kotoba.cloud/account",
+      placeholder: "kc_pat_...",
+      configProvider: "custom",
+      baseUrl: "https://api.kotoba.cloud/v1",
+      needsKey: true,
+    },
+    {
+      // Hermes One's own inference gateway — shown second. OpenAI-compatible, so
       // it routes through `custom` + base_url (like the `openai` card); the key
       // is stored/host-derived as HERMESONE_API_KEY (see url-key-map.ts).
       id: "hermesone",
       name: "Hermes One",
       desc: "Hermes One Inference — pay-per-token with AI Credits",
-      tag: "Recommended",
       envKey: "HERMESONE_API_KEY",
       url: "https://console.hermesone.org/credits",
       placeholder: "hs-live-...",
@@ -342,6 +359,7 @@ export interface LocalPreset {
 // OPENAI_COMPATIBLE_BASE_URLS). Distinct from PROVIDERS.setup, which stays the
 // curated first-run set.
 export const PROVIDER_CARDS: { id: string; name: string }[] = [
+  { id: "kotoba", name: "Kotoba Cloud" },
   { id: "hermesone", name: "Hermes One" },
   { id: "openrouter", name: "constants.openrouterName" },
   { id: "anthropic", name: "constants.anthropicName" },
@@ -377,6 +395,7 @@ export const PROVIDER_CARDS: { id: string; name: string }[] = [
 // picker routes it consistently (autofill base_url + persist as `custom`).
 // Keep this in sync with LOCAL_PRESETS below.
 export const OPENAI_COMPATIBLE_BASE_URLS: Record<string, string> = {
+  kotoba: "https://api.kotoba.cloud/v1",
   hermesone: "https://inference.hermesone.org/v1",
   openai: "https://api.openai.com/v1",
   aimlapi: "https://api.aimlapi.com/v1",
@@ -569,6 +588,7 @@ export const NATIVE_ENV_KEY_ROUTES: Record<
 // anything not listed keeps its FieldDef order after them, ahead of the
 // explicitly demoted keys. Keys are env-var names (a FieldDef's `key`).
 export const PROVIDER_KEY_ORDER: readonly string[] = [
+  "KOTOBA_API_KEY",
   "HERMESONE_API_KEY",
   "OPENAI_API_KEY",
   "ANTHROPIC_API_KEY",
@@ -743,9 +763,18 @@ export const SETTINGS_SECTIONS: SectionDef[] = [
   {
     title: "constants.sectionLlmProviders",
     items: [
-      // Hermes One's own inference gateway — first-class + first in the list.
-      // Custom under the hood (routes as `custom` + inference.hermesone.org),
-      // keyed by HERMESONE_API_KEY via URL_KEY_MAP.
+      // Kotoba Cloud — first-class + first in the list. Custom under the hood
+      // (routes as `custom` + api.kotoba.cloud), keyed by KOTOBA_API_KEY via
+      // URL_KEY_MAP.
+      {
+        key: "KOTOBA_API_KEY",
+        label: "constants.kotobaApiKey",
+        type: "password",
+        hint: "constants.kotobaHint",
+      },
+      // Hermes One's own inference gateway — second. Custom under the hood
+      // (routes as `custom` + inference.hermesone.org), keyed by
+      // HERMESONE_API_KEY via URL_KEY_MAP.
       {
         key: "HERMESONE_API_KEY",
         label: "constants.hermesoneApiKey",

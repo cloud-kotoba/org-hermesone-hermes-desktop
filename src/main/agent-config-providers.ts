@@ -325,10 +325,13 @@ export function removeAgentUserProvider(
 // the agent can route it by slug; must match `OPENAI_COMPATIBLE_BASE_URLS`
 // (renderer constants) and the `URL_KEY_MAP` host pattern.
 const HERMESONE_BASE_URL = "https://inference.hermesone.org/v1";
+// Kotoba Cloud's inference endpoint — the same treatment (this fork's own
+// plane). Must match `OPENAI_COMPATIBLE_BASE_URLS` and the `URL_KEY_MAP` host.
+const KOTOBA_BASE_URL = "https://api.kotoba.cloud/v1";
 
 /**
  * Mirror first-party keyed brands into config.yaml `providers:` so the agent
- * can route them as *named* providers. Today: Hermes One.
+ * can route them as *named* providers. Today: Kotoba Cloud and Hermes One.
  *
  * Without this the gateway has no provider row for `inference.hermesone.org`
  * — desktop models on that endpoint are saved as bare `custom` + base URL,
@@ -344,6 +347,15 @@ export function mirrorFirstPartyAgentProviders(profile?: string): void {
     const { envFile } = profilePaths(profile);
     if (!existsSync(envFile)) return;
     const env = readFileSync(envFile, "utf-8");
+    const kotoba = env.match(/^\s*KOTOBA_API_KEY\s*=\s*(.+)\s*$/m);
+    if (kotoba && kotoba[1].trim()) {
+      upsertAgentUserProvider(profile, {
+        slug: "kotoba",
+        name: "Kotoba Cloud",
+        baseUrl: KOTOBA_BASE_URL,
+        keyEnv: "KOTOBA_API_KEY",
+      });
+    }
     const match = env.match(/^\s*HERMESONE_API_KEY\s*=\s*(.+)\s*$/m);
     if (!match || !match[1].trim()) return;
     upsertAgentUserProvider(profile, {

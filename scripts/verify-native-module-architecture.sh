@@ -8,9 +8,9 @@ if [[ "$ARCH" != "x64" && "$ARCH" != "arm64" ]]; then
   exit 2
 fi
 
-APP_ROOT="dist/mac-$ARCH/Hermes One.app"
+APP_ROOT="dist/mac-$ARCH/Kotoba.app"
 if [[ ! -d "$APP_ROOT" ]]; then
-  APP_ROOT="dist/mac/Hermes One.app"
+  APP_ROOT="dist/mac/Kotoba.app"
 fi
 
 NODE_FILE="$APP_ROOT/Contents/Resources/app.asar.unpacked/node_modules/better-sqlite3/prebuilds/darwin-$ARCH.node"

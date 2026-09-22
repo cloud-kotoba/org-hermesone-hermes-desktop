@@ -23,6 +23,7 @@ export interface UrlKeyMapping {
 }
 
 export const URL_KEY_MAP: ReadonlyArray<UrlKeyMapping> = [
+  { pattern: /api\.kotoba\.cloud/i, envKey: "KOTOBA_API_KEY" },
   { pattern: /inference\.hermesone\.org/i, envKey: "HERMESONE_API_KEY" },
   { pattern: /openrouter\.ai/i, envKey: "OPENROUTER_API_KEY" },
   { pattern: /anthropic\.com/i, envKey: "ANTHROPIC_API_KEY" },

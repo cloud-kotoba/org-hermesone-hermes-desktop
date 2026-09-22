@@ -1,4 +1,4 @@
-appId: com.nousresearch.hermes
+appId: cloud.kotoba.desktop
 # productName is now space-free so the Linux .deb installs to
 # /opt/HermesOne/hermes-agent instead of `/opt/Hermes One/hermes-agent`.
 # The previous path crashed Chromium's zygote on launch because
@@ -8,9 +8,15 @@ appId: com.nousresearch.hermes
 # The user-facing display name "Hermes One" is restored through
 # `linux.desktop.entry.Name`, `nsis.shortcutName`, `nsis.uninstallDisplayName`,
 # and `mac.extendInfo.CFBundleDisplayName` so end users see no change.
-productName: HermesOne
+productName: Kotoba
 directories:
   buildResources: build
+# Without a Developer ID identity electron-builder leaves the packed bundle
+# carrying Electron's stock ad-hoc signature over replaced resources, which
+# `codesign --verify` rejects ("code has no resources but signature indicates
+# they must be present") and Apple Silicon refuses to launch. The hook re-signs
+# ad-hoc inside-out (measured 2026-09-22 on the first Kotoba build).
+afterPack: build/afterPack.js
 files:
   - "!**/.vscode/*"
   - "!src/*"
@@ -22,7 +28,7 @@ asarUnpack:
   - resources/**
   - node_modules/better-sqlite3/prebuilds/*.node
 win:
-  executableName: hermes-agent
+  executableName: kotoba
   target:
     - nsis
     - portable
@@ -32,14 +38,14 @@ nsis:
   artifactName: ${name}-${version}-setup.${ext}
   # Restore user-facing installer / shortcut name now that productName is
   # space-free.
-  shortcutName: Hermes One
-  uninstallDisplayName: Hermes One
+  shortcutName: Kotoba
+  uninstallDisplayName: Kotoba
   createDesktopShortcut: always
   oneClick: true
   perMachine: false
 mac:
   # Keep the existing bundle/executable name used by updates and release checks.
-  executableName: Hermes One
+  executableName: Kotoba
   artifactName: ${name}-${version}-${arch}-${os}.${ext}
   icon: build/icon.icns
   entitlements: build/entitlements.mac.plist
@@ -49,32 +55,35 @@ mac:
     - NSMicrophoneUsageDescription: Application requests access to the device's microphone.
     - NSDocumentsFolderUsageDescription: Application requests access to the user's Documents folder.
     - NSDownloadsFolderUsageDescription: Application requests access to the user's Downloads folder.
-    - CFBundleDisplayName: Hermes One
+    - CFBundleDisplayName: Kotoba
   hardenedRuntime: true
   gatekeeperAssess: false
-  notarize: true
+  # No Developer ID Application certificate exists in this workspace yet
+  # (only App Store distribution certs; see the fork README). Builds are
+  # unsigned until one is obtained -- stated on the download page.
+  notarize: false
 dmg:
   artifactName: ${name}-${version}-${arch}.${ext}
 linux:
+  # snap / rpm need snapcraft / rpmbuild, which the macOS build hosts
+  # (murakumo fleet) do not have; AppImage + deb build anywhere.
   target:
     - AppImage
-    - snap
     - deb
-    - rpm
-  maintainer: electronjs.org
-  vendor: Nous Research
+  maintainer: Kotoba Cloud <support@kotoba.cloud>
+  vendor: Kotoba Cloud
   category: Utility
-  synopsis: Self-improving AI assistant desktop app
+  synopsis: Kotoba desktop app for Hermes Agent
   description: >-
-    Hermes One is a native desktop app for installing, configuring, and chatting
-    with Hermes Agent — a self-improving AI assistant with tool use, multi-platform
-    messaging, and a closed learning loop.
+    Kotoba is a native desktop app for installing, configuring, and chatting
+    with Hermes Agent, wired to Kotoba Cloud inference by default. A fork of
+    Hermes One (fathah/hermes-desktop).
   # Override the user-facing .desktop display name (default would now be
   # "HermesOne" since productName is space-free). See issue #877.
   desktop:
     entry:
-      Name: Hermes One
-      Comment: Hermes One — self-improving AI assistant desktop app
+      Name: Kotoba
+      Comment: Kotoba — Hermes Agent desktop app on Kotoba Cloud
 appImage:
   artifactName: ${name}-${version}-${arch}.${ext}
 deb:
@@ -87,7 +96,11 @@ rpm:
   # Same SUID fix for .rpm consumers (Fedora 40+ also restricts userns).
   afterInstall: build/linux-after-install.sh
 npmRebuild: false
+# Auto-update feed: electron-updater's generic provider reads latest-mac.yml /
+# latest-linux.yml / latest.yml next to the artifacts, all served from
+# app.kotoba.cloud/download/ (the same place the download page links to).
+# Pointing this at upstream's GitHub releases would make the fork update
+# itself back into Hermes One.
 publish:
-  provider: github
-  owner: fathah
-  repo: hermes-desktop
+  provider: generic
+  url: https://app.kotoba.cloud/download/

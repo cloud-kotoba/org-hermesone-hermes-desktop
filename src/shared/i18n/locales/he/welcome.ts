@@ -1,5 +1,5 @@
 export default {
-  title: "ברוכים הבאים ל-Hermes",
+  title: "ברוכים הבאים ל-Kotoba",
   subtitle:
     "עוזר ה-AI שמשתפר בעצמו ורץ מקומית על המכשיר שלכם. פרטי, עוצמתי, ולומד כל הזמן.",
   installIssueTitle: "בעיה בהתקנה",

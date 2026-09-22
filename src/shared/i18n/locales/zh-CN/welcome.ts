@@ -1,5 +1,5 @@
 export default {
-  title: "欢迎使用 Hermes",
+  title: "欢迎使用 Kotoba",
   subtitle: "你的自进化 AI 助手，运行在本机，兼顾隐私、能力与持续学习。",
   installIssueTitle: "安装问题",
   getStarted: "开始使用",

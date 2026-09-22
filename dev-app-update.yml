@@ -1,4 +1,3 @@
-provider: github
-owner: fathah
-repo: hermes-desktop
-updaterCacheDirName: hermes-desktop-updater
+provider: generic
+url: https://app.kotoba.cloud/download/
+updaterCacheDirName: kotoba-desktop-updater
