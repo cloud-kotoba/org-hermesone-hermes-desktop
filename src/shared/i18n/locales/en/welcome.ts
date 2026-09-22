@@ -1,5 +1,5 @@
 export default {
-  title: "Welcome to Hermes One",
+  title: "Welcome to Kotoba",
   subtitle:
     "Your self-improving AI assistant that runs locally on your machine. Private, powerful, and always learning.",
   installIssueTitle: "Installation Issue",

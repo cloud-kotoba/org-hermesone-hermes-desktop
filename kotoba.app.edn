@@ -1,0 +1,29 @@
+;; Application manifest (ADR-2609092600 — the app's four planes: identity /
+;; naming / location / kind; verified by scripts/verify-app-content-address.cljk).
+;;
+;; This app is a native desktop program, not a web document: the "document"
+;; the identity plane addresses is each release installer (one self-contained
+;; file per platform), and the entry hostname is the download page. The kind
+;; is declared :document because that is the property the kind exists to name
+;; — one content-addressed, self-contained file — and not :service /
+;; :placement, which would exempt it from addressing altogether.
+;;
+;; :kotoba.app/bundle-cid is the CID of the primary artifact (macOS arm64 dmg)
+;; of the release named in :kotoba.app/version; every artifact of that release
+;; is listed under :kotoba.app/artifacts with its own CID, size and sha256.
+;; Written by scripts/publish-release.cljk in this repo after a build; a
+;; manifest whose CID does not match dist/ is stale, not wrong.
+{:kotoba.app/id "cloud-kotoba.desktop"
+ :kotoba.app/name "kotoba-desktop"
+ :kotoba.app/kind :document
+ :kotoba.app/version "0.7.7"
+ :kotoba.app/document "dist/kotoba-desktop-0.7.7-arm64.dmg"
+ :kotoba.app/upstream {:repo "fathah/hermes-desktop" :product "Hermes One" :domain "hermesone.org" :license "MIT"}
+ :kotoba.app/build {:generator "npm run build:mac / build:linux (electron-builder)"
+                    :inputs ["package.json" "electron-builder.yml" "src/**"]
+                    :deterministic? false}
+ ;; filled by scripts/publish-release.cljk
+ :kotoba.app/bundle-cid nil
+ :kotoba.app/embed-url nil
+ :kotoba.app/artifacts []
+ :published nil}

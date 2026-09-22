@@ -1,5 +1,5 @@
 export default {
-  title: "Witamy w Hermes",
+  title: "Witamy w Kotoba",
   subtitle:
     "Twój samodoskonalący się asystent AI działający lokalnie na Twoim komputerze. Prywatny, mocny i stale uczący się.",
   installIssueTitle: "Problem z instalacją",

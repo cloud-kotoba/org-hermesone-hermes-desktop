@@ -1,5 +1,5 @@
 export default {
-  title: "Hermes'e Hoş Geldiniz",
+  title: "Kotoba'ya Hoş Geldiniz",
   subtitle:
     "Makinenizde yerel olarak çalışan, kendini geliştiren yapay zeka asistanınız. Gizli, güçlü ve sürekli öğrenen.",
   installIssueTitle: "Kurulum Sorunu",

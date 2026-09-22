@@ -17,7 +17,7 @@
 
 set -e
 
-SANDBOX="/opt/HermesOne/chrome-sandbox"
+SANDBOX="/opt/Kotoba/chrome-sandbox"
 
 if [ -f "$SANDBOX" ]; then
   # 4755 = SUID + rwxr-xr-x. Root-owned by package install; SUID is what

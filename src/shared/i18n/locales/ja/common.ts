@@ -1,5 +1,5 @@
 export default {
-  appName: "Hermes One",
+  appName: "Kotoba",
   continue: "続ける",
   cancel: "キャンセル",
   retry: "再試行",
