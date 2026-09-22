@@ -39,6 +39,11 @@ const mockState = vi.hoisted(() => ({
 vi.mock("./utils", () => ({
   isValidNamedProfileName: (name: unknown) =>
     typeof name === "string" && /^[a-zA-Z0-9][a-zA-Z0-9_-]{0,63}$/.test(name),
+  // wallet-sync reaches the real account-store (wallets are still the Hermes
+  // One account's plane), and it reads this from here
+  isValidProfileName: (name: unknown) =>
+    typeof name === "string" &&
+    (name === "default" || /^[a-zA-Z0-9][a-zA-Z0-9_-]{0,63}$/.test(name)),
   profileHome: (profile?: string) =>
     !profile || profile === "default"
       ? mockState.home
@@ -51,6 +56,13 @@ vi.mock("./utils", () => ({
   },
 }));
 
+// The Kotoba Cloud account is the personal API token: its principal segment
+// is the account identity, and the origin is where /v1/agents lives. Both are
+// read through getters so a case can still vary the backend the way the old
+// Hermes One mock let it (the deleted-link exclusion is keyed by apiUrl).
+// Wallets are still the Hermes One account's plane (there is no wallet API on
+// kotoba.cloud), so wallet-sync keeps reading account-store — and the case
+// that checks it waits for an in-flight agent sync needs it signed in.
 vi.mock("./account-store", () => ({
   findAccountProfile: () => (mockState.account ? "default" : null),
   getAccount: () =>
@@ -66,6 +78,15 @@ vi.mock("./account-store", () => ({
         }
       : null,
   getAccessToken: () => mockState.account?.token ?? null,
+}));
+
+vi.mock("./kotoba-cloud-account", () => ({
+  get KOTOBA_CLOUD_ORIGIN() {
+    return mockState.account?.apiUrl ?? "https://kotoba.cloud";
+  },
+  KOTOBA_API_KEY_ENV: "KOTOBA_API_KEY",
+  kotobaPrincipalId: (token: string) =>
+    token ? (mockState.account?.userId ?? "u1") : null,
 }));
 
 vi.mock("./profiles", () => ({
@@ -126,6 +147,9 @@ vi.mock("./memory", () => ({
 }));
 
 vi.mock("./config", () => ({
+  // the token lives in the DEFAULT profile's .env; a signed-out desktop has
+  // no value there, which is what "signed-out" means for sync
+  readEnv: () => ({ KOTOBA_API_KEY: mockState.account?.token ?? "" }),
   getModelConfig: (profile?: string) =>
     mockState.models.get(profile ?? "default") ?? {
       model: "",
@@ -348,6 +372,12 @@ describe("syncAgents", () => {
       model: "m1",
       color: "#123456",
     });
+    // The plane this syncs to is Kotoba Cloud's, not the upstream backend's:
+    // the paths are what a retarget would silently get wrong.
+    expect(calls.map((c) => `${c.method} ${c.path}`)).toEqual([
+      "GET /v1/agents",
+      "POST /v1/agents",
+    ]);
     // Mapping persisted next to the profile.
     const state = JSON.parse(
       readFileSync(
