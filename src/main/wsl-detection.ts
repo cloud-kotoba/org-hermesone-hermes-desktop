@@ -1,7 +1,7 @@
 /**
  * WSL detection + sibling `~/.hermes/` discovery.
  *
- * Hermes One on Windows reads its config from
+ * Kotoba on Windows reads its config from
  * `%LocalAppData%\hermes\`. Users who also run the `hermes` CLI inside
  * a WSL distro have a second, separate `~/.hermes/` at
  * `/home/<user>/.hermes/` on the WSL filesystem. The two are
