@@ -112,7 +112,7 @@ export default {
     gatewayStop: "Stop",
     gatewayLaunching: "Launching…",
     gatewayOpenHint:
-      "Opens your cloud Hermes (the full web UI) in a window. The desktop's own chat still talks to the local Hermes.",
+      "Opens Kotoba chat — your cloud agent's full web UI — in a window. The desktop's own chat still talks to the local Hermes.",
   },
   hermesAccount: {
     sectionTitle: "Hermes One account",

@@ -26,6 +26,12 @@ import {
 } from "./kotoba-cloud-session";
 
 export const KOTOBA_GATEWAY_PARTITION = "persist:kotoba-cloud-gateway";
+
+/**
+ * What the frame says. The window hosts the in-sandbox Hermes dashboard, so
+ * without pinning this the title bar would carry that page's own name.
+ */
+export const GATEWAY_WINDOW_TITLE = "Kotoba chat";
 const SESSION_URL = `${KOTOBA_APP_ORIGIN}/v1/sandbox/session`;
 const STARTING_POLL_MS = 5_000;
 const STARTING_DEADLINE_MS = 150_000;
@@ -174,7 +180,7 @@ export function openKotobaGatewayWindow(
   gatewayWindow = new BrowserWindow({
     width: 1200,
     height: 820,
-    title: "Kotoba Cloud gateway",
+    title: GATEWAY_WINDOW_TITLE,
     autoHideMenuBar: true,
     ...(parent ? { parent } : {}),
     webPreferences: {
@@ -184,6 +190,18 @@ export function openKotobaGatewayWindow(
       session: session.fromPartition(KOTOBA_GATEWAY_PARTITION),
       webSecurity: true,
     },
+  });
+  // The page loaded here is the in-sandbox Hermes dashboard, whose document
+  // title is "Hermes Agent - Dashboard" — and Electron lets the document title
+  // win over the `title` option above, so the window a Kotoba user opened from
+  // Kotoba announced itself as something else in the title bar, the window
+  // menu and the app switcher. Keep our own name on the frame; the page's
+  // contents are its own.
+  gatewayWindow.on("page-title-updated", (event) => {
+    event.preventDefault();
+    if (gatewayWindow && !gatewayWindow.isDestroyed()) {
+      gatewayWindow.setTitle(GATEWAY_WINDOW_TITLE);
+    }
   });
   gatewayWindow.on("closed", () => {
     gatewayWindow = null;
