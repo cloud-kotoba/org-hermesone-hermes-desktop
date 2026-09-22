@@ -38,6 +38,22 @@ export interface KotobaCloudAccount {
   error?: string;
 }
 
+/** The desktop's signed-in Kotoba Cloud session (Passkey in a window). */
+export interface KotobaCloudViewerInfo {
+  valid: boolean;
+  username?: string | null;
+  principalId?: string | null;
+}
+
+/** The hosted gateway (per-user Hermes in a Modal sandbox) as the lane reports it. */
+export interface KotobaGatewayInfo {
+  running: boolean;
+  status: string;
+  url: string | null;
+  sandboxId: string | null;
+  error?: string;
+}
+
 export type KotobaCloudConnectResult =
   | { status: "connected"; account: KotobaCloudAccount }
   | { status: "invalid" | "refused"; error: string };

@@ -21,6 +21,8 @@ import type {
   HermesOneCreditsResult,
   KotobaCloudAccount,
   KotobaCloudConnectResult,
+  KotobaCloudViewerInfo,
+  KotobaGatewayInfo,
 } from "../shared/account";
 import type { AgentSyncResult, AgentSyncStatus } from "../shared/agent-sync";
 import type { ConnectionStatusSnapshot } from "../shared/connection-status";
@@ -336,6 +338,17 @@ interface HermesAPI {
     profile?: string,
   ) => Promise<KotobaCloudConnectResult>;
   disconnectKotobaCloud: (profile?: string) => Promise<{ success: boolean }>;
+  signInKotobaCloud: (profile?: string) => Promise<{
+    viewer: KotobaCloudViewerInfo;
+    tokenId: string | null;
+    result: KotobaCloudConnectResult;
+  }>;
+  getKotobaCloudViewer: () => Promise<KotobaCloudViewerInfo>;
+  signOutKotobaCloud: () => Promise<void>;
+  getKotobaGatewayStatus: () => Promise<KotobaGatewayInfo>;
+  launchKotobaGateway: () => Promise<KotobaGatewayInfo>;
+  stopKotobaGateway: () => Promise<{ stopped: boolean; error?: string }>;
+  openKotobaGateway: (url: string) => Promise<{ opened: boolean }>;
 
   // Cloud agent sync (profiles ↔ signed-in Hermes One account)
   syncAgents: () => Promise<AgentSyncResult>;

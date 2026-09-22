@@ -111,6 +111,18 @@ import {
   kotobaCloudAccount,
 } from "../kotoba-cloud-account";
 import {
+  issueDesktopToken,
+  kotobaCloudViewer,
+  openKotobaCloudSignIn,
+  signOutKotobaCloud,
+} from "../kotoba-cloud-session";
+import {
+  kotobaGatewayStatus,
+  launchKotobaGateway,
+  openKotobaGatewayWindow,
+  stopKotobaGateway,
+} from "../kotoba-cloud-gateway";
+import {
   syncAgents,
   deleteProfileWithSync,
   getAgentSyncStatus,
@@ -1041,6 +1053,32 @@ export function registerIpcHandlers(context: IpcContext): void {
     "kotoba-cloud-account-disconnect",
     (_event, profile?: string) =>
       disconnectKotobaCloud(profile?.trim() || getActiveProfileNameSync()),
+  );
+
+  // Kotoba Cloud sign-in (this fork): the Passkey page in a window on the
+  // desktop's own cookie partition; once the viewer is valid, issue this
+  // machine's personal API token from that session and store it as the
+  // profile's KOTOBA_API_KEY — one click, no token to paste.
+  ipcMain.handle("kotoba-cloud-sign-in", async (_event, profile?: string) => {
+    const target = profile?.trim() || getActiveProfileNameSync();
+    const viewer = await openKotobaCloudSignIn(context.getMainWindow());
+    const issued = await issueDesktopToken();
+    const result = await connectKotobaCloud(issued.token, target);
+    if (result.status === "connected" && isGatewayRunning(target)) {
+      restartGateway(target);
+    }
+    return { viewer, tokenId: issued.tokenId, result };
+  });
+  ipcMain.handle("kotoba-cloud-viewer", () => kotobaCloudViewer());
+  ipcMain.handle("kotoba-cloud-sign-out", () => signOutKotobaCloud());
+
+  // The gateway kotoba.cloud provides: launch / status / stop the person's
+  // hosted Hermes (app.kotoba.cloud /v1/sandbox/session) and open it.
+  ipcMain.handle("kotoba-cloud-gateway-status", () => kotobaGatewayStatus());
+  ipcMain.handle("kotoba-cloud-gateway-launch", () => launchKotobaGateway());
+  ipcMain.handle("kotoba-cloud-gateway-stop", () => stopKotobaGateway());
+  ipcMain.handle("kotoba-cloud-gateway-open", (_event, url: string) =>
+    openKotobaGatewayWindow(String(url), context.getMainWindow()),
   );
 
   // Cloud agent sync — reconciles local profiles with the signed-in Hermes One

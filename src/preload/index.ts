@@ -32,6 +32,8 @@ import type {
   HermesOneCreditsResult,
   KotobaCloudAccount,
   KotobaCloudConnectResult,
+  KotobaCloudViewerInfo,
+  KotobaGatewayInfo,
 } from "../shared/account";
 import type { AgentSyncResult, AgentSyncStatus } from "../shared/agent-sync";
 import type { GpuPreferenceMode, GpuStatus } from "../shared/gpu";
@@ -300,6 +302,27 @@ const hermesAPI = {
     ipcRenderer.invoke("kotoba-cloud-account-connect", token, profile),
   disconnectKotobaCloud: (profile?: string): Promise<{ success: boolean }> =>
     ipcRenderer.invoke("kotoba-cloud-account-disconnect", profile),
+  // Passkey sign-in in a window + one-click token issuance (this fork)
+  signInKotobaCloud: (
+    profile?: string,
+  ): Promise<{
+    viewer: KotobaCloudViewerInfo;
+    tokenId: string | null;
+    result: KotobaCloudConnectResult;
+  }> => ipcRenderer.invoke("kotoba-cloud-sign-in", profile),
+  getKotobaCloudViewer: (): Promise<KotobaCloudViewerInfo> =>
+    ipcRenderer.invoke("kotoba-cloud-viewer"),
+  signOutKotobaCloud: (): Promise<void> =>
+    ipcRenderer.invoke("kotoba-cloud-sign-out"),
+  // The gateway kotoba.cloud provides (per-user Hermes sandbox)
+  getKotobaGatewayStatus: (): Promise<KotobaGatewayInfo> =>
+    ipcRenderer.invoke("kotoba-cloud-gateway-status"),
+  launchKotobaGateway: (): Promise<KotobaGatewayInfo> =>
+    ipcRenderer.invoke("kotoba-cloud-gateway-launch"),
+  stopKotobaGateway: (): Promise<{ stopped: boolean; error?: string }> =>
+    ipcRenderer.invoke("kotoba-cloud-gateway-stop"),
+  openKotobaGateway: (url: string): Promise<{ opened: boolean }> =>
+    ipcRenderer.invoke("kotoba-cloud-gateway-open", url),
 
   // Cloud agent sync (profiles ↔ signed-in Hermes One account)
   syncAgents: (): Promise<AgentSyncResult> =>
