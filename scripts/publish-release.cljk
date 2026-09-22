@@ -1,0 +1,272 @@
+#!/usr/bin/env kbb
+;; Publish one built release of the Kotoba desktop app to the origin plane and
+;; record what was published — in this repo's kotoba.app.edn and as the data
+;; namespace app.kotoba.cloud serves the download page and updater feed from.
+;;
+;;   kbb --backend sci --classpath ".:<superproject>/orgs/kotoba-lang/content-address/src" \
+;;       scripts/publish-release.cljk [--dist dist] [--wrangler-dir <dir>] \
+;;       [--manifest kotoba.app.edn] [--emit-cljk <path>] [--dry-run]
+;;
+;; What "published" means here (ADR-2609092600, skill kotobase-planes):
+;;
+;;   identity  ipfs://{cid}          raw sha2-256 CIDv1 of each artifact's bytes
+;;   bytes     R2 ipld/{cid}         kotobase-graph-database-production — the
+;;                                   origin plane the web hosts read
+;;   entry     app.kotoba.cloud      /download/{file} streams ipld/{cid}
+;;
+;; The archive plane (kotobase.net PUT /ipfs/{cid}, B2) caps objects at
+;; 4 MiB (content-address.archive/max-object-bytes); a ~200 MB installer is
+;; refused there by design, so this writes the origin plane only and records
+;; the refusal in :published instead of pretending both planes hold it.
+;;
+;; Fail-closed. Exit 0 = every artifact is on the origin plane and hashes back
+;; byte-for-byte / 1 = a plane refused or read-back disagreed /
+;; 2 = could not answer (no dist, no wrangler dir, unreadable manifest).
+(ns publish-release
+  (:require ["node:child_process" :as cp]
+            ["node:crypto" :as crypto]
+            ["node:fs" :as fs]
+            ["node:path" :as path]
+            [clojure.edn :as edn]
+            [clojure.string :as str]
+            [content-address.core :as ca]))
+
+(def ^:private origin-bucket "kotobase-graph-database-production")
+(def ^:private web-plane-host "ipfs.itonami.cloud")
+
+(defn- script-args []
+  (if (seq *command-line-args*)
+    (vec *command-line-args*)
+    (let [argv (vec (js->clj (.-argv js/process)))
+          i (first (keep-indexed (fn [i v] (when (str/ends-with? v "publish-release.cljk") i)) argv))]
+      (if (some? i) (subvec argv (inc i)) []))))
+
+(def args (script-args))
+(defn- flag [n] (second (drop-while #(not= % n) args)))
+(defn- switch? [n] (boolean (some #{n} args)))
+(defn- die [code msg] (println msg) (js/process.exit code))
+
+(defn- sh
+  "Run a command, returning {:exit :out}. Never throws: a tool that is absent
+  and a tool that failed are both answers this has to distinguish."
+  [cmd opts]
+  (try
+    {:exit 0 :out (.toString (cp/execSync cmd (clj->js (merge {:stdio "pipe" :maxBuffer (* 64 1024 1024)} opts))))}
+    (catch :default e
+      {:exit (or (.-status e) 1)
+       :out (str (some-> (.-stdout e) .toString) (some-> (.-stderr e) .toString))})))
+
+;; ---------------------------------------------------------------------------
+;; what a dist/ holds
+
+(def ^:private content-types
+  {"dmg" "application/x-apple-diskimage"
+   "zip" "application/zip"
+   "AppImage" "application/x-executable"
+   "deb" "application/vnd.debian.binary-package"
+   "blockmap" "application/octet-stream"})
+
+(defn- ext [file] (last (str/split file #"\.")))
+
+(defn- describe
+  "platform / arch / kind from an electron-builder artifact name:
+   kotoba-desktop-0.7.7-arm64.dmg, kotoba-desktop-0.7.7-x64-mac.zip,
+   kotoba-desktop-0.7.7-arm64.AppImage, kotoba-desktop_0.7.7_arm64.deb."
+  [file]
+  (let [kind (ext file)
+        arch (cond (re-find #"arm64" file) "arm64"
+                   (re-find #"(x64|amd64|x86_64)" file) "x64"
+                   :else "unknown")
+        platform (case kind
+                   ("dmg" "zip") "macos"
+                   ("AppImage" "deb") "linux"
+                   "blockmap" (if (re-find #"\.(dmg|zip)\.blockmap$" file) "macos" "linux")
+                   "unknown")]
+    {:platform platform :arch arch :kind kind}))
+
+(defn- sha256-hex [abs]
+  (-> (crypto/createHash "sha256") (.update (.readFileSync fs abs)) (.digest "hex")))
+
+(defn- cid-of
+  "raw sha2-256 CIDv1 of the file's bytes — the same hasher the rest of the
+  workspace uses (content-address.core/cid-string), fed the digest directly
+  so a 200 MB installer is never turned into a 200-million-element vector."
+  [abs]
+  (let [digest (-> (crypto/createHash "sha256") (.update (.readFileSync fs abs)) (.digest))]
+    (ca/cid-string :raw (vec (js/Array.from digest)))))
+
+(defn- artifact [dist file]
+  (let [abs (path/join dist file)
+        st (.statSync fs abs)]
+    (merge {:file file
+            :bytes (.-size st)
+            :sha256 (sha256-hex abs)
+            :cid (cid-of abs)
+            :content-type (get content-types (ext file) "application/octet-stream")}
+           (describe file))))
+
+(defn- artifact-file? [f]
+  (re-find #"\.(dmg|zip|AppImage|deb|blockmap)$" f))
+
+(defn- feed-file? [f]
+  (re-find #"^latest.*\.yml$" f))
+
+;; ---------------------------------------------------------------------------
+;; origin plane
+
+(defn- web-plane-answer
+  "What {cid}.ipfs.itonami.cloud answers for `cid`: {:status :length}. HEAD.
+  Information, not the verdict: measured 2026-09-22, that host serves a
+  208 KB blockmap (200) and answers 502 for a 196 MB installer — it is a
+  Worker that reads the object whole, and installers are past what it can
+  hold. The entry plane (app.kotoba.cloud /download/{file}) streams from the
+  bucket instead, so a 502 here is recorded, not treated as a missing object."
+  [cid]
+  (let [r (sh (str "curl -sS -m 60 -I https://" cid "." web-plane-host "/") {})
+        head (:out r)
+        code (some->> (re-find #"HTTP/\S+ (\d{3})" head) second)
+        len (some->> (re-find #"(?i)content-length: (\d+)" head) second js/parseInt)]
+    {:status (or code "no-answer") :length len}))
+
+(defn- bucket-sha256
+  "sha2-256 of what the bucket actually holds under `cid`, streamed through
+  wrangler's --pipe into shasum so a 200 MB object needs no disk. This is the
+  read-back that counts: the bytes the entry plane will stream are the bytes
+  that were hashed, or the release is not published."
+  [wrangler-dir cid]
+  (let [r (sh (str "npx wrangler r2 object get " origin-bucket "/ipld/" cid
+                   " --remote --pipe 2>/dev/null | shasum -a 256")
+              {:cwd wrangler-dir :maxBuffer (* 4 1024 1024)})]
+    (when (zero? (:exit r))
+      (some-> (re-find #"^([0-9a-f]{64})" (str/trim (:out r))) second))))
+
+(defn- put-origin! [wrangler-dir abs {:keys [cid]}]
+  (sh (str "npx wrangler r2 object put " origin-bucket "/ipld/" cid
+           " --file " (pr-str abs) " --content-type application/vnd.ipld.raw --remote")
+      {:cwd wrangler-dir}))
+
+;; ---------------------------------------------------------------------------
+;; the two records
+
+(defn- read-manifest [p]
+  (try (edn/read-string (.readFileSync fs p "utf8"))
+       (catch :default e (die 2 (str "UNANSWERED — manifest will not read: " p " — " e)))))
+
+(defn- primary
+  "The artifact kotoba.app.edn names as *the* document: macOS arm64 dmg, else
+  the first dmg, else the first artifact."
+  [artifacts]
+  (or (first (filter #(and (= "dmg" (:kind %)) (= "arm64" (:arch %))) artifacts))
+      (first (filter #(= "dmg" (:kind %)) artifacts))
+      (first artifacts)))
+
+(defn- write-manifest! [p m version artifacts feeds published-at archive-refusal]
+  (let [pri (primary artifacts)
+        m' (assoc m
+                  :kotoba.app/version version
+                  :kotoba.app/document (str "dist/" (:file pri))
+                  :kotoba.app/bundle-cid (:cid pri)
+                  :kotoba.app/embed-url (ca/embed-url (:cid pri))
+                  :kotoba.app/artifacts (vec artifacts)
+                  :published {:origin (str "r2://" origin-bucket "/ipld/{cid}")
+                              :web (str "https://{cid}." web-plane-host "/")
+                              :entry "https://app.kotoba.cloud/download/{file}"
+                              :feeds (vec (keys feeds))
+                              :archive archive-refusal
+                              :at published-at})]
+    (.writeFileSync fs p (str (pr-str m') "\n"))
+    m'))
+
+(defn- emit-cljk!
+  "The data namespace app-kotoba-cloud compiles into its worker and its site:
+  the artifacts (what /download/{file} streams and the page lists) and the
+  updater feeds (latest-mac.yml …, served verbatim). Data only — the routing
+  and rendering that read it live in app-kotoba-cloud."
+  [p version artifacts feeds published-at]
+  (let [lines [";; GENERATED by cloud-kotoba/org-hermesone-hermes-desktop scripts/publish-release.cljk"
+               (str ";; from a build of version " version " at " published-at " — do not edit; re-run the publisher.")
+               "(ns app-kotoba-cloud.desktop-releases"
+               "  \"The Kotoba desktop app's published release (ADR-2609092600): every"
+               "   artifact's content address, and the electron-updater feeds. Generated —"
+               "   see the header. Read by worker.cljk (/download/{file}) and"
+               "   sandbox-site.cljk (the download section of app.kotoba.cloud).\")"
+               ""
+               (str "(def version " (pr-str version) ")")
+               (str "(def published-at " (pr-str published-at) ")")
+               "(def origin-bucket \"kotobase-graph-database-production\")"
+               "(def upstream {:repo \"fathah/hermes-desktop\" :product \"Hermes One\" :license \"MIT\""
+               "               :fork \"https://github.com/cloud-kotoba/org-hermesone-hermes-desktop\"})"
+               ""
+               "(def artifacts"
+               (str "  " (pr-str (vec artifacts)) ")")
+               ""
+               ";; file name -> the feed's text, served verbatim as text/yaml at /download/{name}"
+               "(def feeds"
+               (str "  " (pr-str feeds) ")")
+               ""
+               "(def by-file (into {} (map (juxt :file identity)) artifacts))"
+               ""]]
+    (.writeFileSync fs p (str/join "\n" lines))))
+
+;; ---------------------------------------------------------------------------
+
+(let [dist (or (flag "--dist") "dist")
+      manifest-path (or (flag "--manifest") "kotoba.app.edn")
+      wrangler-dir (or (flag "--wrangler-dir")
+                       (path/join (.cwd js/process) ".." "kotobase-ipfs"))
+      emit (flag "--emit-cljk")
+      dry? (switch? "--dry-run")]
+  (when-not (.existsSync fs dist)
+    (die 2 (str "UNANSWERED — no dist directory: " dist " (build first)")))
+  (when-not (.existsSync fs manifest-path)
+    (die 2 (str "UNANSWERED — no manifest: " manifest-path)))
+  (when-not (or dry? (.existsSync fs wrangler-dir))
+    (die 2 (str "UNANSWERED — no directory to run wrangler from: " wrangler-dir)))
+  (let [files (sort (vec (js->clj (.readdirSync fs dist))))
+        artifacts (mapv #(artifact dist %) (filter artifact-file? files))
+        feeds (into {} (map (fn [f] [f (.readFileSync fs (path/join dist f) "utf8")])
+                            (filter feed-file? files)))
+        version (or (some->> (:file (primary artifacts)) (re-find #"[-_](\d+\.\d+\.\d+)[-_]") second)
+                    (die 2 "UNANSWERED — could not read a version out of the artifact names"))
+        published-at (.toISOString (js/Date.))
+        archive-refusal {:refusal :over-archive-cap
+                         :cap (* 4 1024 1024)
+                         :detail "kotobase.net PUT /ipfs caps at 4 MiB; installers are origin-plane only"}]
+    (when (empty? artifacts)
+      (die 2 (str "UNANSWERED — " dist " holds no .dmg/.zip/.AppImage/.deb/.blockmap")))
+    (println (str "SCANNED\t" (count artifacts) " artifact(s), " (count feeds) " feed(s), version " version))
+    (doseq [a artifacts]
+      (println (str "  " (:file a) "\t" (:bytes a) " B\t" (:cid a))))
+    (if dry?
+      (println "dry-run — nothing written to the origin plane, the manifest, or the data namespace")
+      (do
+        ;; ---- 1. origin plane, each artifact, idempotent -------------------
+        (doseq [{:keys [file cid sha256] :as a} artifacts]
+          (let [abs (path/resolve (path/join dist file))
+                held (bucket-sha256 wrangler-dir cid)]
+            (if (= held sha256)
+              (println (str "origin " cid " already held with the same sha256 — skipped"))
+              (let [put (put-origin! wrangler-dir abs a)]
+                (when-not (zero? (:exit put))
+                  (println (str/trim (:out put)))
+                  (die 1 (str "origin-plane write failed for " file " (" cid ")")))
+                (println (str "origin " origin-bucket "/ipld/" cid " <- " file))))))
+        ;; ---- 2. read-back: the bucket's bytes, hashed ------------------------
+        (doseq [{:keys [file cid sha256]} artifacts]
+          (let [held (bucket-sha256 wrangler-dir cid)]
+            (println (str "bucket ipld/" cid " sha256 " (or held "unreadable") (if (= held sha256) " = local" " ≠ local")))
+            (when-not (= held sha256)
+              (die 1 (str "the bucket does not hold " file " byte-for-byte")))))
+        ;; ---- 3. the web plane's answer, recorded ---------------------------
+        (let [web (into {} (map (fn [{:keys [cid]}] [cid (web-plane-answer cid)])) artifacts)]
+          (doseq [[cid {:keys [status length]}] web]
+            (println (str "web    https://" cid "." web-plane-host "/ -> " status (when length (str " " length " B")))))
+          ;; ---- 4. the records ---------------------------------------------
+          (write-manifest! manifest-path (read-manifest manifest-path) version
+                           (mapv (fn [a] (assoc a :web-plane (get web (:cid a)))) artifacts)
+                           feeds published-at archive-refusal))
+        (println (str "manifest " manifest-path " <- bundle-cid " (:cid (primary artifacts))))
+        (when emit
+          (emit-cljk! emit version artifacts feeds published-at)
+          (println (str "emitted  " emit)))
+        (println (str "VERIFIED\t" (count artifacts) " artifact(s) on the origin plane"))))))

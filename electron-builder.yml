@@ -11,6 +11,12 @@ appId: cloud.kotoba.desktop
 productName: Kotoba
 directories:
   buildResources: build
+# Without a Developer ID identity electron-builder leaves the packed bundle
+# carrying Electron's stock ad-hoc signature over replaced resources, which
+# `codesign --verify` rejects ("code has no resources but signature indicates
+# they must be present") and Apple Silicon refuses to launch. The hook re-signs
+# ad-hoc inside-out (measured 2026-09-22 on the first Kotoba build).
+afterPack: build/afterPack.js
 files:
   - "!**/.vscode/*"
   - "!src/*"
