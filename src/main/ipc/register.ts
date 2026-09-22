@@ -106,6 +106,11 @@ import {
   fetchHermesOneCredits,
 } from "../hermesone-provision";
 import {
+  connectKotobaCloud,
+  disconnectKotobaCloud,
+  kotobaCloudAccount,
+} from "../kotoba-cloud-account";
+import {
   syncAgents,
   deleteProfileWithSync,
   getAgentSyncStatus,
@@ -1015,6 +1020,28 @@ export function registerIpcHandlers(context: IpcContext): void {
   });
   // The signed-in account's AI-credit balance, shown on the account card.
   ipcMain.handle("hermesone-credits", () => fetchHermesOneCredits());
+
+  // Kotoba Cloud account (this fork): the profile's KOTOBA_API_KEY, proven
+  // against kotoba.cloud before it is stored, read back with its balance.
+  ipcMain.handle("kotoba-cloud-account-get", (_event, profile?: string) =>
+    kotobaCloudAccount(profile?.trim() || getActiveProfileNameSync()),
+  );
+  ipcMain.handle(
+    "kotoba-cloud-account-connect",
+    async (_event, token: string, profile?: string) => {
+      const target = profile?.trim() || getActiveProfileNameSync();
+      const result = await connectKotobaCloud(token, target);
+      if (result.status === "connected" && isGatewayRunning(target)) {
+        restartGateway(target); // the gateway reads .env at start
+      }
+      return result;
+    },
+  );
+  ipcMain.handle(
+    "kotoba-cloud-account-disconnect",
+    (_event, profile?: string) =>
+      disconnectKotobaCloud(profile?.trim() || getActiveProfileNameSync()),
+  );
 
   // Cloud agent sync — reconciles local profiles with the signed-in Hermes One
   // account's cloud agents. `agent-sync-updated` tells the renderer to reload

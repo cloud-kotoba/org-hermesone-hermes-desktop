@@ -9156,6 +9156,24 @@ body:has(.shell-vibrant),
   color: var(--text-primary);
   user-select: all;
 }
+/* Kotoba Cloud sign-in (this fork): token paste form inside the sign-in modal */
+.kotoba-signin-form {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 10px;
+  margin: 18px auto 0;
+  width: min(100%, 360px);
+  text-align: left;
+}
+.kotoba-signin-form .btn {
+  justify-content: center;
+}
+.kotoba-signin-label {
+  font-size: 12px;
+  color: var(--text-muted);
+}
+
 .hermes-signin-copy {
   margin: 16px auto 0;
   display: inline-flex;

@@ -1080,6 +1080,58 @@ function Office({ visible, profile }: OfficeProps): React.JSX.Element {
                   ? t("office.gatewayRunning")
                   : t("office.gatewayStopped")}
               </dd>
+
+              {/* This fork: what the profile's cron scheduler recorded — the
+                  fleet is cron-driven, so this is where its work shows. */}
+              <dt style={{ opacity: 0.55 }}>{t("office.cronLabel")}</dt>
+              <dd style={{ margin: 0, wordBreak: "break-word" }}>
+                {!selectedAgent.cron || selectedAgent.cron.jobs === 0 ? (
+                  t("office.cronNone")
+                ) : (
+                  <>
+                    <div>
+                      {t("office.cronJobs", { count: selectedAgent.cron.jobs })}
+                      {selectedAgent.cron.running > 0 && (
+                        <>
+                          {" · "}
+                          {t("office.cronRunning", {
+                            count: selectedAgent.cron.running,
+                          })}
+                        </>
+                      )}
+                    </div>
+                    <div>
+                      {t("office.cronLastRun")}:{" "}
+                      {selectedAgent.cron.lastRunAt
+                        ? new Date(
+                            selectedAgent.cron.lastRunAt,
+                          ).toLocaleString()
+                        : t("office.cronNeverRan")}
+                      {selectedAgent.cron.lastStatus === "ok" && " ✓"}
+                    </div>
+                    {selectedAgent.cron.lastStatus === "error" && (
+                      <div style={{ color: "#ef4444" }}>
+                        {t("office.cronLastFailed")}
+                        {selectedAgent.cron.failedJobs.length > 0 &&
+                          ` (${selectedAgent.cron.failedJobs.join(", ")})`}
+                        {selectedAgent.cron.lastError && (
+                          <div style={{ opacity: 0.8, fontSize: 12 }}>
+                            {selectedAgent.cron.lastError}
+                          </div>
+                        )}
+                      </div>
+                    )}
+                    {selectedAgent.cron.nextRunAt && (
+                      <div>
+                        {t("office.cronNextRun")}:{" "}
+                        {new Date(
+                          selectedAgent.cron.nextRunAt,
+                        ).toLocaleString()}
+                      </div>
+                    )}
+                  </>
+                )}
+              </dd>
             </dl>
 
             <button

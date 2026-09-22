@@ -1,5 +1,5 @@
 import { createAgentAvatarProfileFromSeed } from "./avatars/profile";
-import type { OfficeAgent } from "./core/types";
+import type { OfficeAgent, OfficeAgentCron } from "./core/types";
 
 /**
  * A profile as surfaced by the desktop's `listProfiles` IPC. Only the fields
@@ -18,6 +18,7 @@ export interface OfficeProfileInput {
   model?: string;
   provider?: string;
   gatewayRunning?: boolean;
+  cron?: OfficeAgentCron | null;
 }
 
 /** Minimal Kanban task shape needed to derive live Office activity. */
@@ -49,10 +50,30 @@ function hashName(name: string): number {
 }
 
 /**
+ * What a profile's cron scheduler says its status is, when it says anything:
+ * an attempt in flight is "working", a last run that failed is "error", a
+ * scheduler with jobs that ran fine is "idle" (between runs). A profile with
+ * no cron directory, or with cron but no enabled jobs, says nothing (null)
+ * and the upstream rule below decides. This fork's fleet is cron-driven
+ * (see main/profile-cron.ts): without this every bot was amber all day, the
+ * 57 that had failed indistinguishable from the ones that had succeeded.
+ */
+export function cronStatus(
+  cron: OfficeAgentCron | null | undefined,
+): OfficeAgent["status"] | null {
+  if (!cron || cron.jobs === 0) return null;
+  if (cron.running > 0) return "working";
+  if (cron.lastStatus === "error") return "error";
+  return "idle";
+}
+
+/**
  * Map a desktop profile to an office agent. When Kanban activity is available,
  * a running assignment reads as "working" (green), otherwise "idle" (amber).
  * Gateway liveness is retained as separate metadata and as a compatibility
- * fallback for connection modes that cannot query Kanban.
+ * fallback for connection modes that cannot query Kanban. A running Kanban
+ * card or a live gateway still wins over cron; cron speaks only when neither
+ * says "working" (this fork).
  */
 export function profileToOfficeAgent(
   profile: OfficeProfileInput,
@@ -62,19 +83,24 @@ export function profileToOfficeAgent(
   const seed = id || "agent";
   const agentName = profile.name;
   const color = AGENT_COLORS[hashName(seed) % AGENT_COLORS.length];
+  const upstreamStatus: OfficeAgent["status"] =
+    activeTaskCount === undefined
+      ? profile.gatewayRunning
+        ? "working"
+        : "idle"
+      : activeTaskCount > 0
+        ? "working"
+        : "idle";
+  const fromCron = cronStatus(profile.cron);
   // Use the profile id as the stable identifier for routing/gateway calls.
   return {
     id,
     name: agentName,
     subtitle: profile.model || profile.provider || null,
     status:
-      activeTaskCount === undefined
-        ? profile.gatewayRunning
-          ? "working"
-          : "idle"
-        : activeTaskCount > 0
-          ? "working"
-          : "idle",
+      upstreamStatus === "working" || fromCron === null
+        ? upstreamStatus
+        : fromCron,
     color,
     item: "desk",
     avatarProfile: createAgentAvatarProfileFromSeed(seed),
@@ -82,6 +108,7 @@ export function profileToOfficeAgent(
     provider: profile.provider,
     gatewayRunning: profile.gatewayRunning,
     activeTaskCount,
+    cron: profile.cron ?? null,
     position: "employee",
   };
 }
@@ -133,7 +160,10 @@ export function officeAgentsChanged(
       before.model !== agent.model ||
       before.provider !== agent.provider ||
       before.gatewayRunning !== agent.gatewayRunning ||
-      before.activeTaskCount !== agent.activeTaskCount
+      before.activeTaskCount !== agent.activeTaskCount ||
+      before.cron?.running !== agent.cron?.running ||
+      before.cron?.lastRunAt !== agent.cron?.lastRunAt ||
+      before.cron?.lastStatus !== agent.cron?.lastStatus
     );
   });
 }

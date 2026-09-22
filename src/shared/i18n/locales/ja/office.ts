@@ -66,4 +66,13 @@ export default {
   repCreateExists: "このエージェントはすでに銀行口座を持っています。",
   repStatusForeign:
     "このエージェントは別の Hermes One アカウントに連携されています。",
+  // This fork: the profile's cron scheduler (main/profile-cron)
+  cronLabel: "定期ジョブ",
+  cronNone: "定期ジョブなし",
+  cronJobs: "{{count}} 件",
+  cronRunning: "{{count}} 件が実行中",
+  cronLastRun: "前回の実行",
+  cronNextRun: "次回の実行",
+  cronLastFailed: "前回の実行が失敗",
+  cronNeverRan: "未実行",
 } as const;

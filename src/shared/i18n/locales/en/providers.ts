@@ -66,6 +66,33 @@ export default {
     minimaxDesc: "Use your MiniMax subscription",
     nousDesc: "Sign in with your Nous Portal subscription",
   },
+  kotobaAccount: {
+    sectionTitle: "Kotoba Cloud account",
+    sectionHint:
+      "Sign in to Kotoba Cloud in your browser (Passkey), issue a personal API token on kotoba.cloud/account, and connect it here. It becomes this profile's KOTOBA_API_KEY — the key the Kotoba Cloud provider and the agent use.",
+    signIn: "Sign in to Kotoba Cloud",
+    signOut: "Disconnect",
+    connected: "Connected",
+    notLive: "Token no longer valid",
+    token: "token …{{id}}",
+    credits: "${{amount}} ai credit",
+    creditsTitle:
+      "ai credit available on your Kotoba Cloud account (GET /v1/billing/status). Top up on kotoba.cloud/billing.",
+    creditsUnknown: "balance unavailable",
+    creditsUnknownTitle:
+      "This token cannot read the balance (it has no billing:read scope). Chat still works.",
+    manage: "Manage on kotoba.cloud",
+    modalTitle: "Sign in to Kotoba Cloud",
+    modalHint:
+      "1. Open kotoba.cloud/account and sign in with your Passkey.  2. Issue a personal API token (kc_pat_…).  3. Paste it below — it is checked with Kotoba Cloud before it is saved.",
+    openAccount: "Open kotoba.cloud/account",
+    tokenLabel: "Personal API token",
+    tokenPlaceholder: "kc_pat_…",
+    connect: "Connect",
+    connecting: "Checking with Kotoba Cloud…",
+    successHint: "Connected. Kotoba Cloud is ready as a provider.",
+    failed: "Could not connect.",
+  },
   hermesAccount: {
     sectionTitle: "Hermes One account",
     sectionHint:

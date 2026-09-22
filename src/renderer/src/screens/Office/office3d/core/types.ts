@@ -7,6 +7,17 @@ export type OfficeInteractionTargetId = string;
 /** An agent's org position. Everyone is an employee; exactly one can be CEO. */
 export type AgentPosition = "employee" | "ceo";
 
+/** A cron-driven profile's work, as the scheduler recorded it. */
+export type OfficeAgentCron = {
+  jobs: number;
+  running: number;
+  lastRunAt: string | null;
+  lastStatus: "ok" | "error" | null;
+  lastError: string | null;
+  nextRunAt: string | null;
+  failedJobs: string[];
+};
+
 export type OfficeAgent = {
   id: string;
   name: string;
@@ -21,6 +32,8 @@ export type OfficeAgent = {
   gatewayRunning?: boolean;
   /** Number of running Kanban cards currently assigned to this profile. */
   activeTaskCount?: number;
+  /** This fork: the profile's cron scheduler state (see main/profile-cron). */
+  cron?: OfficeAgentCron | null;
   /** Org position; defaults to "employee" when unset. The CEO gets a desk. */
   position?: AgentPosition;
 };
