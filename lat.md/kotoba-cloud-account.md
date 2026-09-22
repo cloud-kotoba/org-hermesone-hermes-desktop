@@ -6,9 +6,13 @@ kotoba.cloud authenticates people with a Passkey in the browser and issues perso
 
 Upstream's Hermes One device login (`hermes-account.ts`, `hermesone-provision.ts`, agent sync) remains in the main process and preload but is no longer reachable from the Providers page.
 
+## Passkey session
+
+[[src/main/kotoba-cloud-session.ts#openKotobaCloudSignIn]] hosts `auth.kotoba.cloud/sign-in` in an Electron window whose cookies live in `persist:kotoba-cloud` (the pattern of `remote-oauth.ts`), polls `GET /v1/session` through that partition until the viewer is valid, and rejects when the window is closed or five minutes pass. [[src/main/kotoba-cloud-session.ts#issueDesktopToken]] then issues this machine's personal API token from that session (`POST /v1/account/api-token`, label `Kotoba desktop · <host>`, scopes `inference` + `billing:read`, `Origin: https://kotoba.cloud` because the worker's same-origin gate protects a browser's ambient cookies and this partition is reachable by no web page) and hands it to `connectKotobaCloud`. The session is also what the cloud gateway lane uses ([[kotoba-cloud-gateway]]).
+
 ## Sign-in modal
 
-[[src/renderer/src/components/KotobaCloudAccountModal.tsx#KotobaCloudAccountModal]] replaces the device-code modal: a button that opens `kotoba.cloud/account` in the default browser, a password field for the token, and Connect, which shows the server's refusal by name (`token-revoked`, `sign-in-required`, a scope refusal) and stores nothing on failure.
+[[src/renderer/src/components/KotobaCloudAccountModal.tsx#KotobaCloudAccountModal]] replaces the device-code modal: "Sign in with Passkey" (the window above, then the token is issued and stored without pasting), and below it the manual path — a button that opens `kotoba.cloud/account` in the default browser, a password field for the token, and Connect, which shows the server's refusal by name (`token-revoked`, `sign-in-required`, a scope refusal) and stores nothing on failure.
 
 ## Tests
 

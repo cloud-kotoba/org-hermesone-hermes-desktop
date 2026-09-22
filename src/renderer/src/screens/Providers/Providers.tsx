@@ -23,7 +23,10 @@ import { useDiscoveredModels } from "../../hooks/useDiscoveredModels";
 import { KeyRound, Workflow, User } from "../../assets/icons";
 import { ChevronDown, X, LayoutGrid, Eye, EyeOff, Coins } from "lucide-react";
 import { customProviderEnvKey } from "../../../../shared/url-key-map";
-import type { KotobaCloudAccount } from "../../../../shared/account";
+import type {
+  KotobaCloudAccount,
+  KotobaGatewayInfo,
+} from "../../../../shared/account";
 
 /** Preview a stored key as prefix + dots + last 4, so a set key is recognisable
  * without exposing it. */
@@ -188,6 +191,57 @@ function Providers({
   // getHermesOneCredits) still exists in the main process but has no card
   // here — this app's account is Kotoba Cloud's.
   const [account, setAccount] = useState<KotobaCloudAccount | null>(null);
+  // The gateway kotoba.cloud provides (per-user Hermes sandbox), read from
+  // app.kotoba.cloud with the desktop's own Passkey session; null = not
+  // asked yet. "signed-out" means the session partition holds no sign-in.
+  const [gateway, setGateway] = useState<KotobaGatewayInfo | null>(null);
+  const [gatewayBusy, setGatewayBusy] = useState(false);
+  const [gatewayError, setGatewayError] = useState<string | null>(null);
+  const refreshGateway = useCallback(async () => {
+    try {
+      setGateway(await window.hermesAPI.getKotobaGatewayStatus());
+    } catch (err) {
+      setGateway({
+        running: false,
+        status: "unavailable",
+        url: null,
+        sandboxId: null,
+        error: (err as Error)?.message,
+      });
+    }
+  }, []);
+  useEffect(() => {
+    if (!account) {
+      setGateway(null);
+      return;
+    }
+    void refreshGateway();
+  }, [account, refreshGateway]);
+  async function launchGateway(): Promise<void> {
+    setGatewayBusy(true);
+    setGatewayError(null);
+    try {
+      const r = await window.hermesAPI.launchKotobaGateway();
+      setGateway(r);
+      if (r.error) setGatewayError(r.error);
+      else if (r.url) await window.hermesAPI.openKotobaGateway(r.url);
+    } catch (err) {
+      setGatewayError((err as Error)?.message || "launch failed");
+    } finally {
+      setGatewayBusy(false);
+    }
+  }
+  async function stopGateway(): Promise<void> {
+    setGatewayBusy(true);
+    setGatewayError(null);
+    try {
+      const r = await window.hermesAPI.stopKotobaGateway();
+      if (!r.stopped) setGatewayError(r.error || "stop failed");
+      await refreshGateway();
+    } finally {
+      setGatewayBusy(false);
+    }
+  }
   const [showAccountModal, setShowAccountModal] = useState(false);
   useEffect(() => {
     let cancelled = false;
@@ -728,6 +782,82 @@ function Providers({
                 >
                   {t("providers.kotobaAccount.signOut")}
                 </button>
+                <div className="kotoba-gateway-row">
+                  <span className="kotoba-gateway-label">
+                    {t("providers.kotobaAccount.gatewayLabel")}:
+                  </span>
+                  <span>
+                    {gateway === null
+                      ? "…"
+                      : gateway.status === "signed-out"
+                        ? t("providers.kotobaAccount.gatewaySignedOut")
+                        : gateway.status === "unavailable"
+                          ? t("providers.kotobaAccount.gatewayUnavailable")
+                          : gateway.status === "starting"
+                            ? t("providers.kotobaAccount.gatewayStarting")
+                            : gateway.running
+                              ? t("providers.kotobaAccount.gatewayRunning")
+                              : t("providers.kotobaAccount.gatewayStopped")}
+                  </span>
+                  {gateway && gateway.running && gateway.url && (
+                    <button
+                      type="button"
+                      className="btn btn-primary btn-sm"
+                      title={t("providers.kotobaAccount.gatewayOpenHint")}
+                      onClick={() =>
+                        void window.hermesAPI.openKotobaGateway(
+                          gateway.url as string,
+                        )
+                      }
+                    >
+                      {t("providers.kotobaAccount.gatewayOpen")}
+                    </button>
+                  )}
+                  {gateway && gateway.running && (
+                    <button
+                      type="button"
+                      className="btn btn-secondary btn-sm"
+                      disabled={gatewayBusy}
+                      onClick={() => void stopGateway()}
+                    >
+                      {t("providers.kotobaAccount.gatewayStop")}
+                    </button>
+                  )}
+                  {gateway &&
+                    !gateway.running &&
+                    gateway.status !== "signed-out" &&
+                    gateway.status !== "unavailable" && (
+                      <button
+                        type="button"
+                        className="btn btn-primary btn-sm"
+                        disabled={gatewayBusy}
+                        title={t("providers.kotobaAccount.gatewayLaunchHint")}
+                        onClick={() => void launchGateway()}
+                      >
+                        {gatewayBusy
+                          ? t("providers.kotobaAccount.gatewayLaunching")
+                          : t("providers.kotobaAccount.gatewayLaunch")}
+                      </button>
+                    )}
+                  {gateway && gateway.status === "signed-out" && (
+                    <button
+                      type="button"
+                      className="btn btn-secondary btn-sm"
+                      onClick={() => setShowAccountModal(true)}
+                    >
+                      {t("providers.kotobaAccount.passkey")}
+                    </button>
+                  )}
+                  <span className="kotoba-gateway-hint">
+                    {gatewayError
+                      ? gatewayError
+                      : gateway &&
+                          !gateway.running &&
+                          gateway.status !== "signed-out"
+                        ? t("providers.kotobaAccount.gatewayLaunchHint")
+                        : t("providers.kotobaAccount.gatewayOpenHint")}
+                  </span>
+                </div>
               </div>
             ) : (
               <button

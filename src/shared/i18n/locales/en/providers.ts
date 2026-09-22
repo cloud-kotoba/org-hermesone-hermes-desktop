@@ -85,6 +85,11 @@ export default {
     modalTitle: "Sign in to Kotoba Cloud",
     modalHint:
       "1. Open kotoba.cloud/account and sign in with your Passkey.  2. Issue a personal API token (kc_pat_…).  3. Paste it below — it is checked with Kotoba Cloud before it is saved.",
+    passkey: "Sign in with Passkey",
+    passkeyHint:
+      "Opens kotoba.cloud's sign-in in a window. Once you are signed in, this app issues its own personal API token from that session and saves it here — nothing to paste.",
+    passkeyWorking: "Waiting for the sign-in window…",
+    orPaste: "or paste a token you issued yourself",
     openAccount: "Open kotoba.cloud/account",
     tokenLabel: "Personal API token",
     tokenPlaceholder: "kc_pat_…",
@@ -92,6 +97,22 @@ export default {
     connecting: "Checking with Kotoba Cloud…",
     successHint: "Connected. Kotoba Cloud is ready as a provider.",
     failed: "Could not connect.",
+    gatewayLabel: "Gateway",
+    gatewayLocal: "local Hermes on this machine",
+    gatewayCloud: "Kotoba Cloud — your own Hermes in a sandbox",
+    gatewayRunning: "cloud gateway running",
+    gatewayStarting: "cloud gateway starting…",
+    gatewayStopped: "cloud gateway stopped",
+    gatewaySignedOut: "sign in with Passkey to use the cloud gateway",
+    gatewayUnavailable: "cloud gateway lane not available on kotoba.cloud yet",
+    gatewayLaunch: "Launch cloud gateway",
+    gatewayLaunchHint:
+      "One flat charge per launch or resume from your ai credit; nothing while it runs; sessions end after 3 hours.",
+    gatewayOpen: "Open",
+    gatewayStop: "Stop",
+    gatewayLaunching: "Launching…",
+    gatewayOpenHint:
+      "Opens your cloud Hermes (the full web UI) in a window. The desktop's own chat still talks to the local Hermes.",
   },
   hermesAccount: {
     sectionTitle: "Hermes One account",

@@ -28,9 +28,31 @@ function KotobaCloudAccountModal({
   const { t } = useI18n();
   const [token, setToken] = useState("");
   const [status, setStatus] = useState<
-    "idle" | "running" | "success" | "error"
+    "idle" | "running" | "passkey" | "success" | "error"
   >("idle");
   const [error, setError] = useState<string | null>(null);
+
+  // Passkey in a window on the app's own cookie partition; the token is
+  // then issued from that session by the main process — nothing is typed
+  // here, nothing is pasted.
+  async function signInWithPasskey(): Promise<void> {
+    if (status === "running" || status === "passkey") return;
+    setStatus("passkey");
+    setError(null);
+    try {
+      const r = await window.hermesAPI.signInKotobaCloud(profile);
+      if (r.result.status === "connected") {
+        setStatus("success");
+        onConnected(r.result.account);
+      } else {
+        setStatus("error");
+        setError(r.result.error);
+      }
+    } catch (err) {
+      setStatus("error");
+      setError((err as Error)?.message || t("providers.kotobaAccount.failed"));
+    }
+  }
 
   async function connect(): Promise<void> {
     if (!token.trim() || status === "running") return;
@@ -103,6 +125,22 @@ function KotobaCloudAccountModal({
           >
             <button
               type="button"
+              className="btn btn-primary btn-sm"
+              onClick={() => void signInWithPasskey()}
+              disabled={status === "passkey" || status === "running"}
+            >
+              {status === "passkey"
+                ? t("providers.kotobaAccount.passkeyWorking")
+                : t("providers.kotobaAccount.passkey")}
+            </button>
+            <p className="kotoba-signin-label">
+              {t("providers.kotobaAccount.passkeyHint")}
+            </p>
+            <p className="kotoba-signin-label kotoba-signin-or">
+              {t("providers.kotobaAccount.orPaste")}
+            </p>
+            <button
+              type="button"
               className="btn btn-secondary btn-sm"
               onClick={() => void window.hermesAPI.openExternal(ACCOUNT_URL)}
             >
@@ -120,12 +158,14 @@ function KotobaCloudAccountModal({
               placeholder={t("providers.kotobaAccount.tokenPlaceholder")}
               value={token}
               onChange={(e) => setToken(e.target.value)}
-              disabled={status === "running"}
+              disabled={status === "running" || status === "passkey"}
             />
             <button
               type="submit"
-              className="btn btn-primary btn-sm"
-              disabled={!token.trim() || status === "running"}
+              className="btn btn-secondary btn-sm"
+              disabled={
+                !token.trim() || status === "running" || status === "passkey"
+              }
             >
               {status === "running"
                 ? t("providers.kotobaAccount.connecting")
@@ -138,9 +178,11 @@ function KotobaCloudAccountModal({
           <span className="hermes-signin-footer-status">
             {status === "running"
               ? t("providers.kotobaAccount.connecting")
-              : status === "success"
-                ? t("providers.kotobaAccount.connected")
-                : ""}
+              : status === "passkey"
+                ? t("providers.kotobaAccount.passkeyWorking")
+                : status === "success"
+                  ? t("providers.kotobaAccount.connected")
+                  : ""}
           </span>
           <button className="hermes-signin-cancel" onClick={onClose}>
             {status === "success" ? t("common.close") : t("common.cancel")}

@@ -9173,6 +9173,28 @@ body:has(.shell-vibrant),
   font-size: 12px;
   color: var(--text-muted);
 }
+.kotoba-signin-or {
+  text-align: center;
+  margin-top: 6px;
+}
+.kotoba-gateway-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  margin-top: 10px;
+  padding-top: 10px;
+  border-top: 1px solid var(--border-subtle, rgba(255, 255, 255, 0.08));
+  font-size: 13px;
+}
+.kotoba-gateway-row .kotoba-gateway-label {
+  color: var(--text-muted);
+}
+.kotoba-gateway-row .kotoba-gateway-hint {
+  flex-basis: 100%;
+  font-size: 12px;
+  color: var(--text-muted);
+}
 
 .hermes-signin-copy {
   margin: 16px auto 0;
