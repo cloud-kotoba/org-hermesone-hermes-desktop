@@ -1,6 +1,5 @@
 // @vitest-environment node
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import type { CloudWalletRaw } from "../shared/wallets";
 
 // wallet-actions' deps are faked the same way as wallet-sync.test.ts: the
 // tests drive the backend-call logic without a real account, keychain, or
@@ -31,7 +30,21 @@ vi.mock("./hermes-account", () => ({
     json ? { "content-type": "application/json" } : {},
 }));
 
+vi.mock("./wallet-store", () => ({
+  // the address this profile already controls; its key never leaves the machine
+  listWallets: () => [{ id: "local-1", name: "main", address: "0xlocal" }],
+}));
+
 vi.mock("./agent-sync", () => ({
+  // wallet-sync now reads the SAME account agent-sync stamps links with
+  cloudAccount: () =>
+    mockState.account
+      ? {
+          apiUrl: mockState.account.apiUrl,
+          accountId: "u1",
+          token: mockState.account.token,
+        }
+      : null,
   getLinkedAgentId: () => mockState.linkedAgentId,
   // Link owner recorded in sync state — matches the mock account ("u1") so
   // actions proceed; the legacy/foreign paths are covered in wallet-sync tests.
@@ -61,19 +74,6 @@ function stubFetch(body: unknown, ok = true, status = 200): StubCall[] {
   return calls;
 }
 
-function rawWallet(overrides: Partial<CloudWalletRaw> = {}): CloudWalletRaw {
-  return {
-    id: "wal-1",
-    kind: "bankr",
-    label: "Treasury",
-    evmAddress: "0xabc",
-    receiveOnly: false,
-    canTransact: true,
-    createdAt: "2026-07-01T00:00:00.000Z",
-    ...overrides,
-  };
-}
-
 async function engine(): Promise<typeof import("./wallet-actions")> {
   return import("./wallet-actions");
 }
@@ -99,38 +99,49 @@ describe("getWalletPortfolio", () => {
     expect(calls).toHaveLength(0);
   });
 
-  it("maps the backend portfolio to token views", async () => {
+  it("maps Kotoba Cloud's portfolio rows to token views", async () => {
     const calls = stubFetch({
-      portfolio: {
-        totalUsd: 12.5,
-        tokens: [
-          {
-            symbol: "HD",
-            name: "Hermes Desktop",
-            balance: 100,
-            balanceUsd: 2.5,
-          },
-          { symbol: "ETH", name: "Ether", balance: 0.004, balanceUsd: 10 },
-        ],
-      },
+      tokens: [
+        { symbol: "USDC", name: "USD Coin", balance: 12.281, balanceUsd: null },
+        { symbol: "ETH", name: "Ether", balance: 0.001, balanceUsd: null },
+      ],
+      unread: [],
     });
     const { getWalletPortfolio } = await engine();
     const result = await getWalletPortfolio("default", "wal-1");
     expect(result.status).toBe("ok");
-    expect(result.totalUsd).toBe(12.5);
-    expect(result.tokens?.map((t) => t.symbol)).toEqual(["HD", "ETH"]);
+    expect(result.tokens?.map((t) => t.symbol)).toEqual(["USDC", "ETH"]);
+    // this plane has no price oracle: unpriced is null, and the total with it
+    expect(result.tokens?.every((t) => t.balanceUsd === null)).toBe(true);
+    expect(result.totalUsd).toBe(null);
     expect(calls[0].url).toBe(
-      "http://localhost:3002/api/wallets/wal-1/portfolio",
+      "http://localhost:3002/v1/wallets/wal-1/portfolio",
     );
   });
 
+  it("carries `unread` through instead of showing an unread row as zero", async () => {
+    stubFetch({
+      tokens: [
+        { symbol: "ETH", name: "Ether", balance: 0.001, balanceUsd: null },
+      ],
+      unread: ["USDC", "WETH"],
+    });
+    const { getWalletPortfolio } = await engine();
+    const result = await getWalletPortfolio("default", "wal-1");
+    expect(result.status).toBe("ok");
+    // the two that could not be read are NAMED, not listed at zero: "0" and
+    // "we could not ask" are different answers about somebody's money
+    expect(result.unread).toEqual(["USDC", "WETH"]);
+    expect(result.tokens?.map((t) => t.symbol)).toEqual(["ETH"]);
+  });
+
   it("defaults malformed token rows instead of crashing", async () => {
-    stubFetch({ portfolio: { tokens: [{}] } });
+    stubFetch({ tokens: [{}] });
     const { getWalletPortfolio } = await engine();
     const result = await getWalletPortfolio("default", "wal-1");
     expect(result.status).toBe("ok");
     expect(result.tokens).toEqual([
-      { symbol: "?", name: "Token", balance: 0, balanceUsd: 0 },
+      { symbol: "?", name: "Token", balance: 0, balanceUsd: null },
     ]);
   });
 
@@ -157,17 +168,28 @@ describe("getWalletPortfolio", () => {
 });
 
 describe("provisionAgentWallet", () => {
-  it("provisions a bankr wallet for the linked agent", async () => {
-    const calls = stubFetch({ wallet: rawWallet() }, true, 201);
+  it("registers the profile's local address instead of provisioning custody", async () => {
+    const calls = stubFetch({
+      wallet: {
+        id: "wal-1",
+        kind: "watch-only",
+        label: "main",
+        evmAddress: "0xabc",
+        receiveOnly: true,
+        canTransact: false,
+        createdAt: new Date().toISOString(),
+      },
+    });
     const { provisionAgentWallet } = await engine();
     const result = await provisionAgentWallet("default");
     expect(result.status).toBe("ok");
-    expect(result.wallet?.address).toBe("0xabc");
-    expect(calls[0].url).toBe("http://localhost:3002/api/wallets");
-    expect(JSON.parse(String(calls[0].init?.body))).toEqual({
-      agentId: "agent-1",
-      kind: "bankr",
-    });
+    expect(calls[0].url).toBe("http://localhost:3002/v1/wallets");
+    // the address is the LOCAL wallet's; no key and no `kind: bankr` crosses,
+    // because this plane cannot hold one
+    const sent = JSON.parse(String(calls[0].init?.body ?? "{}"));
+    expect(sent).toMatchObject({ address: "0xlocal" });
+    expect(sent.kind).toBeUndefined();
+    expect(result.wallet?.canTransact).toBe(false);
   });
 
   it("maps the backend's 409 to status exists", async () => {

@@ -479,7 +479,7 @@ let lastResult: AgentSyncResult | null = null;
  * reading it per-profile would make "which agents am I backing up" depend on
  * which agent happened to be selected.
  */
-function cloudAccount(): {
+export function cloudAccount(): {
   apiUrl: string;
   accountId: string;
   token: string;
