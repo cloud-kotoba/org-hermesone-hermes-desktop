@@ -16,6 +16,10 @@ import {
   isAllowedWebviewUrl,
 } from "../security";
 import { registerIpcHandlers } from "../ipc/register";
+import {
+  startServiceSupervisor,
+  stopServiceSupervisorPolling,
+} from "../service-supervisor";
 import { migrateKotobaTokensToKeychain } from "../kotoba-cloud-account";
 import { setGatewayPromptParent } from "../gatewayPrompt";
 import { showChatContextMenu } from "./context-menu";
@@ -52,6 +56,14 @@ export function startMainProcess(): void {
 
   app.whenReady().then(() => {
     electronApp.setAppUserModelId("com.hermes.desktop");
+
+    // Long-running services (former launchd KeepAlive agents) from
+    // ~/.hermes/desktop-services.json; a no-op when that file is absent.
+    try {
+      startServiceSupervisor();
+    } catch (e) {
+      console.error("[service-supervisor] failed to start:", e);
+    }
 
     app.on("browser-window-created", (_, window) => {
       optimizer.watchWindowShortcuts(window);
@@ -129,6 +141,9 @@ export function startMainProcess(): void {
 
   app.on("before-quit", () => {
     stopHealthPolling();
+    // Only the watch loop stops: supervised services are detached and keep
+    // running; the next Desktop adopts them from their pid files.
+    stopServiceSupervisorPolling();
     for (const abort of activeRuns.values()) abort();
     activeRuns.clear();
     cleanupTempMediaFiles();
