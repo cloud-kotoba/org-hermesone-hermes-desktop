@@ -18,9 +18,37 @@
  * revoked (the server checks its registry, not only the MAC), and a token
  * without the `billing:read` scope is stored — it can still chat — but the
  * balance is shown as unknown rather than as zero.
+ *
+ * At rest the token is in the OS keychain (kotoba-cloud-token-store.ts), not
+ * in `.env`: `setEnvValue` / `readEnv` route `KOTOBA_API_KEY` there, and
+ * `migrateKotobaTokensToKeychain` moves any plaintext copy at startup.
  */
-import { readEnv, setEnvValue } from "./config";
+import { existsSync, readdirSync } from "fs";
+import { join } from "path";
+import {
+  KOTOBA_PLAINTEXT_WARNING,
+  readEnv,
+  readEnvFile,
+  removeEnvKey,
+  secureEnvWarning,
+  setEnvValue,
+  setSecureEnvWarning,
+} from "./config";
 import { mirrorFirstPartyAgentProviders } from "./agent-config-providers";
+import { HERMES_HOME } from "./installer";
+import {
+  hasStoredKotobaToken,
+  kotobaSecureStorageAvailable,
+  readStoredKotobaToken,
+  writeStoredKotobaToken,
+} from "./kotoba-cloud-token-store";
+import { isValidProfileName } from "./utils";
+import {
+  getKotobaOrgSelection,
+  kotobaCloudManageUrl,
+  kotobaErrorCode,
+  setKotobaOrgSelection,
+} from "./kotoba-cloud-orgs";
 import type {
   KotobaCloudAccount,
   KotobaCloudConnectResult,
@@ -51,23 +79,38 @@ export function kotobaTokenId(token: string): string | null {
   return m ? m[1] : null;
 }
 
+/**
+ * The one accessor for the profile's Kotoba Cloud token, wherever it is at
+ * rest (keychain store, or plaintext `.env` when the keychain is
+ * unavailable). Null when none is stored.
+ */
+export function kotobaCloudToken(profile?: string): string | null {
+  const token = (readEnv(profile)[KOTOBA_API_KEY_ENV] || "").trim();
+  return token || null;
+}
+
 type Verify =
-  | { ok: true; balance: number | null; scopeMissing?: string }
+  | { ok: true; balance: number | null; refusal?: string }
   | { ok: false; error: string };
 
 /**
  * Ask kotoba.cloud what this token is. One request, one route, the answer
  * read by name: 200 → the ai balance (`balances[scope=ai].availableMicroUSD`),
  * 401 `token-revoked` / `sign-in-required` → not a live token, 403 with a
- * scope refusal → live but cannot read billing.
+ * scope refusal → live but cannot read billing. With `org`, the same route
+ * answers that organization's ledger (`?org=<handle>`); a 403
+ * `org-role-insufficient` there means the person's role cannot read it —
+ * still a live token, balance unknown.
  */
 export async function verifyKotobaCloudToken(
   token: string,
   fetchImpl: typeof fetch = fetch,
+  org?: string | null,
 ): Promise<Verify> {
   try {
+    const query = org ? `?org=${encodeURIComponent(org)}` : "";
     const res = await fetchImpl(
-      `${KOTOBA_CLOUD_ORIGIN}${BILLING_STATUS_PATH}`,
+      `${KOTOBA_CLOUD_ORIGIN}${BILLING_STATUS_PATH}${query}`,
       {
         headers: {
           authorization: `Bearer ${token.trim()}`,
@@ -90,19 +133,18 @@ export async function verifyKotobaCloudToken(
       };
     }
     if (res.status === 403) {
-      // live token, wrong scopes — the refusal names the scope it wanted
+      // live token, but this read is refused — a missing scope, or (with
+      // `org`) a role that cannot see the org ledger; the code names which
       const detail =
-        typeof body.error === "string"
-          ? body.error
-          : JSON.stringify(body.error ?? "");
+        kotobaErrorCode(body) ??
+        (body.error === undefined ? "" : JSON.stringify(body.error));
       return {
         ok: true,
         balance: null,
-        scopeMissing: detail || "billing:read",
+        refusal: detail || "billing:read",
       };
     }
-    const error =
-      typeof body.error === "string" ? body.error : `HTTP ${res.status}`;
+    const error = kotobaErrorCode(body) ?? `HTTP ${res.status}`;
     return { ok: false, error };
   } catch (err) {
     return {
@@ -112,20 +154,52 @@ export async function verifyKotobaCloudToken(
   }
 }
 
-/** The account state for a profile: null when no token is stored. */
+/** Where the profile's token is at rest, and the warning to show if plaintext. */
+export function kotobaTokenStorage(profile?: string): {
+  storage: "keychain" | "plaintext";
+  storageWarning?: string;
+} {
+  const plaintext = (readEnvFile(profile)[KOTOBA_API_KEY_ENV] || "").trim();
+  if (plaintext) {
+    return {
+      storage: "plaintext",
+      storageWarning: secureEnvWarning(profile) ?? KOTOBA_PLAINTEXT_WARNING,
+    };
+  }
+  return { storage: "keychain" };
+}
+
+/**
+ * The account state for a profile: null when no token is stored. The
+ * balance is the selected billing context's — personal, or the org chosen in
+ * the switcher (`?org=`).
+ */
 export async function kotobaCloudAccount(
   profile?: string,
   fetchImpl: typeof fetch = fetch,
 ): Promise<KotobaCloudAccount | null> {
-  const token = (readEnv(profile)[KOTOBA_API_KEY_ENV] || "").trim();
-  if (!token) return null;
-  const verified = await verifyKotobaCloudToken(token, fetchImpl);
+  const token = kotobaCloudToken(profile);
+  if (!token) {
+    // An encrypted token the keychain will not open (keyring locked, app
+    // re-signed) must not read as "never connected" without a word.
+    if (hasStoredKotobaToken(profile) && !kotobaSecureStorageAvailable()) {
+      console.warn(
+        "[kotoba-cloud] a stored token exists but the OS keychain is unavailable",
+      );
+    }
+    return null;
+  }
+  const org = getKotobaOrgSelection(profile);
+  const verified = await verifyKotobaCloudToken(token, fetchImpl, org);
   return {
     tokenId: kotobaTokenId(token),
     accountUrl: KOTOBA_CLOUD_ACCOUNT_URL,
     live: verified.ok,
     balance: verified.ok ? verified.balance : null,
-    error: verified.ok ? verified.scopeMissing : verified.error,
+    error: verified.ok ? verified.refusal : verified.error,
+    org,
+    manageUrl: kotobaCloudManageUrl(org),
+    ...kotobaTokenStorage(profile),
   };
 }
 
@@ -145,6 +219,7 @@ export async function connectKotobaCloud(
   }
   const verified = await verifyKotobaCloudToken(token, fetchImpl);
   if (!verified.ok) return { status: "refused", error: verified.error };
+  // keychain when available, plaintext .env with a warning otherwise (config.ts)
   setEnvValue(KOTOBA_API_KEY_ENV, token, profile);
   // the agent routes `kotoba` by slug once the key exists (config.yaml providers:)
   mirrorFirstPartyAgentProviders(profile);
@@ -155,13 +230,87 @@ export async function connectKotobaCloud(
       accountUrl: KOTOBA_CLOUD_ACCOUNT_URL,
       live: true,
       balance: verified.balance,
-      error: verified.scopeMissing,
+      error: verified.refusal,
+      org: null,
+      manageUrl: kotobaCloudManageUrl(null),
+      ...kotobaTokenStorage(profile),
     },
   };
 }
 
 /** Forget the token. The card on kotoba.cloud/account is where it is revoked. */
 export function disconnectKotobaCloud(profile?: string): { success: boolean } {
+  // clears the keychain entry and any plaintext line (config.ts)
   setEnvValue(KOTOBA_API_KEY_ENV, "", profile);
+  // the next account may not belong to the same organizations
+  try {
+    setKotobaOrgSelection(profile, null);
+  } catch {
+    /* best-effort */
+  }
   return { success: true };
+}
+
+/** Profile names with a home on disk: `default` plus each valid named profile. */
+function profilesOnDisk(): string[] {
+  const names = ["default"];
+  const dir = join(HERMES_HOME, "profiles");
+  if (!existsSync(dir)) return names;
+  try {
+    for (const name of readdirSync(dir).sort()) {
+      if (isValidProfileName(name) && name !== "default") names.push(name);
+    }
+  } catch {
+    // unreadable profiles dir — the default profile is still migrated
+  }
+  return names;
+}
+
+export type KotobaTokenMigration =
+  | "migrated"
+  | "replaced-stored"
+  | "kept-plaintext"
+  | "failed-kept-plaintext";
+
+/**
+ * Startup migration: move a plaintext `KOTOBA_API_KEY` out of each profile's
+ * `.env` into the keychain store, then remove the line. Idempotent — a
+ * profile with no plaintext token is left alone. When the keychain is
+ * unavailable (or the write does not read back) the `.env` copy stays, a
+ * warning is recorded for the account card, and nothing is dropped. A
+ * plaintext value that differs from an already-stored one wins: the desktop
+ * never writes `.env` while the keychain works, so it is the newer write
+ * (an older app version, the CLI, a hand edit).
+ */
+export function migrateKotobaTokensToKeychain(
+  profiles: string[] = profilesOnDisk(),
+): Record<string, KotobaTokenMigration> {
+  const out: Record<string, KotobaTokenMigration> = {};
+  for (const name of profiles) {
+    const profile = name === "default" ? undefined : name;
+    const plaintext = (readEnvFile(profile)[KOTOBA_API_KEY_ENV] || "").trim();
+    if (!plaintext) continue;
+    if (!kotobaSecureStorageAvailable()) {
+      setSecureEnvWarning(profile, KOTOBA_PLAINTEXT_WARNING);
+      console.warn(`[kotoba-cloud] ${name}: ${KOTOBA_PLAINTEXT_WARNING}`);
+      out[name] = "kept-plaintext";
+      continue;
+    }
+    const previous = readStoredKotobaToken(profile);
+    try {
+      writeStoredKotobaToken(profile, plaintext);
+    } catch (err) {
+      setSecureEnvWarning(profile, KOTOBA_PLAINTEXT_WARNING);
+      console.warn(
+        `[kotoba-cloud] ${name}: keychain write failed, token kept in .env: ${(err as Error).message}`,
+      );
+      out[name] = "failed-kept-plaintext";
+      continue;
+    }
+    removeEnvKey(KOTOBA_API_KEY_ENV, profile);
+    setSecureEnvWarning(profile, undefined);
+    out[name] =
+      previous && previous !== plaintext ? "replaced-stored" : "migrated";
+  }
+  return out;
 }

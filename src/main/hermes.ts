@@ -2753,6 +2753,9 @@ function sendMessageViaCli(
     "VOICE_TOOLS_OPENAI_KEY",
     "TINKER_API_KEY",
     "WANDB_API_KEY",
+    // Kotoba Cloud: the token is in the keychain store, not the .env the
+    // agent would load itself — `profileEnv` (readEnv) carries it here.
+    "KOTOBA_API_KEY",
   ];
   // Resolve the configured secrets provider's enumerable secrets ONCE (not
   // per-key): a `command` backend would otherwise spawn the helper ~30 times

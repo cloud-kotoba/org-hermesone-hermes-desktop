@@ -22,6 +22,7 @@ import type {
   KotobaCloudAccount,
   KotobaCloudConnectResult,
   KotobaCloudViewerInfo,
+  KotobaOrgState,
   KotobaGatewayInfo,
 } from "../shared/account";
 import type { AgentSyncResult, AgentSyncStatus } from "../shared/agent-sync";
@@ -344,6 +345,11 @@ interface HermesAPI {
     result: KotobaCloudConnectResult;
   }>;
   getKotobaCloudViewer: () => Promise<KotobaCloudViewerInfo>;
+  getKotobaOrgs: (profile?: string) => Promise<KotobaOrgState>;
+  selectKotobaOrg: (
+    handle: string | null,
+    profile?: string,
+  ) => Promise<KotobaCloudAccount | null>;
   signOutKotobaCloud: () => Promise<void>;
   getKotobaGatewayStatus: () => Promise<KotobaGatewayInfo>;
   launchKotobaGateway: () => Promise<KotobaGatewayInfo>;

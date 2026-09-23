@@ -4,13 +4,33 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 // config.ts reaches for electron + the installer; the account module needs
-// only readEnv / setEnvValue, so those two are an in-memory .env here.
+// only its env accessors and the desktop settings, so those are in-memory
+// here (`env` is the resolved view — keychain store or .env alike; the
+// storage split itself is kotoba-cloud-token-store.test.ts's job).
 const env: Record<string, string> = {};
+const desktop: Record<string, unknown> = {};
 vi.mock("./config", () => ({
+  KOTOBA_PLAINTEXT_WARNING: "plaintext",
   readEnv: () => ({ ...env }),
+  readEnvFile: () => ({}),
+  removeEnvKey: () => {},
+  secureEnvWarning: () => undefined,
+  setSecureEnvWarning: () => {},
   setEnvValue: (key: string, value: string) => {
     env[key] = value;
   },
+  readDesktopConfig: () => ({ ...desktop }),
+  writeDesktopConfig: (data: Record<string, unknown>) => {
+    for (const k of Object.keys(desktop)) delete desktop[k];
+    Object.assign(desktop, data);
+  },
+}));
+vi.mock("./installer", () => ({ HERMES_HOME: "/nonexistent-hermes-home" }));
+vi.mock("./kotoba-cloud-token-store", () => ({
+  hasStoredKotobaToken: () => false,
+  kotobaSecureStorageAvailable: () => true,
+  readStoredKotobaToken: () => null,
+  writeStoredKotobaToken: () => {},
 }));
 const mirrored: unknown[] = [];
 vi.mock("./agent-config-providers", () => ({
@@ -26,6 +46,12 @@ import {
   kotobaTokenId,
   verifyKotobaCloudToken,
 } from "./kotoba-cloud-account";
+import {
+  fetchKotobaOrgMemberships,
+  getKotobaOrgSelection,
+  kotobaCloudManageUrl,
+  setKotobaOrgSelection,
+} from "./kotoba-cloud-orgs";
 
 const TOKEN = "kc_pat_urn:kotoba:principal:0123.d5cc449fa4d5.abcdefMAC";
 
@@ -47,6 +73,7 @@ const callsOf = (f: typeof fetch): Array<{ url: string; auth?: string }> =>
 
 beforeEach(() => {
   for (const k of Object.keys(env)) delete env[k];
+  for (const k of Object.keys(desktop)) delete desktop[k];
   mirrored.length = 0;
 });
 
@@ -93,7 +120,7 @@ describe("verifyKotobaCloudToken", () => {
     expect(r).toEqual({
       ok: true,
       balance: null,
-      scopeMissing: "scope-refused:billing:read",
+      refusal: "scope-refused:billing:read",
     });
   });
 
@@ -127,6 +154,9 @@ describe("connectKotobaCloud", () => {
         live: true,
         balance: 5,
         error: undefined,
+        org: null,
+        manageUrl: "https://kotoba.cloud/account",
+        storage: "keychain",
       },
     });
     expect(env.KOTOBA_API_KEY).toBe(TOKEN);
@@ -167,6 +197,9 @@ describe("kotobaCloudAccount", () => {
       live: true,
       balance: 0,
       error: undefined,
+      org: null,
+      manageUrl: "https://kotoba.cloud/account",
+      storage: "keychain",
     });
     const dead = await kotobaCloudAccount(
       undefined,
@@ -181,7 +214,144 @@ describe("kotobaCloudAccount", () => {
 
   it("disconnect empties the key so the provider card reads it as unset", () => {
     env.KOTOBA_API_KEY = TOKEN;
+    setKotobaOrgSelection("work", "acme");
     expect(disconnectKotobaCloud("work")).toEqual({ success: true });
     expect(env.KOTOBA_API_KEY).toBe("");
+    // the next account may not be in the same organizations
+    expect(getKotobaOrgSelection("work")).toBeNull();
+  });
+
+  it("reads the selected organization's ledger with ?org= and links its manage page", async () => {
+    env.KOTOBA_API_KEY = TOKEN;
+    setKotobaOrgSelection(undefined, "acme");
+    const f = answer(200, {
+      balances: [{ scope: "ai", availableMicroUSD: 7_500_000 }],
+    });
+    const a = await kotobaCloudAccount(undefined, f);
+    expect(callsOf(f)[0].url).toBe(
+      "https://kotoba.cloud/v1/billing/status?org=acme",
+    );
+    expect(a).toMatchObject({
+      live: true,
+      balance: 7.5,
+      org: "acme",
+      manageUrl: "https://kotoba.cloud/account?org=acme",
+    });
+  });
+
+  it("a role that cannot read the org ledger stays live with the balance unknown", async () => {
+    env.KOTOBA_API_KEY = TOKEN;
+    setKotobaOrgSelection(undefined, "acme");
+    const a = await kotobaCloudAccount(
+      undefined,
+      answer(403, { error: "org-role-insufficient" }),
+    );
+    expect(a).toMatchObject({
+      live: true,
+      balance: null,
+      error: "org-role-insufficient",
+      org: "acme",
+    });
+  });
+});
+
+describe("organization switcher", () => {
+  const ORGS = {
+    orgs: [
+      {
+        handle: "acme",
+        did: "did:web:acme",
+        role: "owner",
+        plan: "team",
+        seatLimit: 10,
+        memberCount: 3,
+      },
+      {
+        handle: "lab",
+        did: "did:web:lab",
+        role: "member",
+        plan: null,
+        seatLimit: null,
+        memberCount: 12,
+      },
+    ],
+  };
+
+  it("reads memberships with the bearer and keeps the contract's fields", async () => {
+    const f = answer(200, ORGS);
+    const r = await fetchKotobaOrgMemberships(TOKEN, f);
+    expect(callsOf(f)).toEqual([
+      {
+        url: "https://kotoba.cloud/v1/org/memberships",
+        auth: `Bearer ${TOKEN}`,
+      },
+    ]);
+    expect(r).toEqual({ status: "ok", orgs: ORGS.orgs });
+  });
+
+  it("an empty list is 'no organizations', distinct from every refusal", async () => {
+    expect(
+      await fetchKotobaOrgMemberships(TOKEN, answer(200, { orgs: [] })),
+    ).toEqual({ status: "ok", orgs: [] });
+  });
+
+  it("a token without org:read reads as reconnect, not as an empty list or an error", async () => {
+    expect(
+      await fetchKotobaOrgMemberships(
+        TOKEN,
+        answer(403, { error: { code: "token-scope-insufficient" } }),
+      ),
+    ).toEqual({ status: "reconnect" });
+  });
+
+  it("a server without the route (404) reads as unavailable", async () => {
+    expect(
+      await fetchKotobaOrgMemberships(
+        TOKEN,
+        answer(404, { error: "not-found" }),
+      ),
+    ).toEqual({ status: "unavailable" });
+  });
+
+  it("anything else is an error that names the server's code; no token is signed-out", async () => {
+    expect(
+      await fetchKotobaOrgMemberships(
+        TOKEN,
+        answer(401, { error: "token-revoked" }),
+      ),
+    ).toEqual({ status: "error", error: "token-revoked" });
+    expect(
+      await fetchKotobaOrgMemberships(TOKEN, answer(200, { nope: 1 })),
+    ).toEqual({ status: "error", error: "malformed-response" });
+    expect(await fetchKotobaOrgMemberships(null, answer(200, ORGS))).toEqual({
+      status: "signed-out",
+    });
+  });
+
+  it("drops rows whose handle could not be sent back safely", async () => {
+    const r = await fetchKotobaOrgMemberships(
+      TOKEN,
+      answer(200, {
+        orgs: [{ handle: "../x", role: "owner", memberCount: 1 }, ORGS.orgs[0]],
+      }),
+    );
+    expect(r).toEqual({ status: "ok", orgs: [ORGS.orgs[0]] });
+  });
+
+  it("persists the selection per profile and refuses a malformed handle", () => {
+    expect(getKotobaOrgSelection("work")).toBeNull();
+    setKotobaOrgSelection("work", "acme");
+    expect(getKotobaOrgSelection("work")).toBe("acme");
+    expect(getKotobaOrgSelection(undefined)).toBeNull();
+    setKotobaOrgSelection("work", null);
+    expect(getKotobaOrgSelection("work")).toBeNull();
+    expect(() => setKotobaOrgSelection("work", "a/b")).toThrow();
+  });
+
+  it("manage opens the account console, with ?org= for an organization", () => {
+    expect(kotobaCloudManageUrl(null)).toBe("https://kotoba.cloud/account");
+    expect(kotobaCloudManageUrl("acme")).toBe(
+      "https://kotoba.cloud/account?org=acme",
+    );
   });
 });

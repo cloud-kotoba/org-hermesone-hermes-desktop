@@ -8,11 +8,11 @@ Phase 1 covers the free parts from the backend's `docs/agent-sync.md`: color, pe
 
 kotoba.cloud has no device-code or OAuth flow to reuse — the workspace's human-authentication policy makes those non-authorities — so the desktop's account IS the personal API token it issued from a Passkey session.
 
-[[src/main/agent-sync.ts#cloudAccount]] reads it from the DEFAULT profile's `KOTOBA_API_KEY`: the token is the credential and, through its principal segment ([[src/main/kotoba-cloud-account.ts#kotobaPrincipalId]]), the `accountId` that keeps one machine's links from being applied against somebody else's agents. Sync is device-wide, so reading it per-profile would make "which agents am I backing up" depend on which agent happened to be selected.
+[[src/main/agent-sync.ts#cloudAccount]] reads it for the DEFAULT profile through [[src/main/kotoba-cloud-account.ts#kotobaCloudToken]] (keychain store, see [[kotoba-cloud-account#Kotoba Cloud account#Token at rest]]): the token is the credential and, through its principal segment ([[src/main/kotoba-cloud-account.ts#kotobaPrincipalId]]), the `accountId` that keeps one machine's links from being applied against somebody else's agents. Sync is device-wide, so reading it per-profile would make "which agents am I backing up" depend on which agent happened to be selected.
 
-The token must carry the `agents` scope; [[src/main/kotoba-cloud-session.ts#issueDesktopToken]] asks for it alongside `inference` and `billing:read`. A token issued before that scope existed is refused by name (`token-scope-insufficient`) rather than failing as an outage.
+The token must carry the `agents` scope; [[src/main/kotoba-cloud-session.ts#issueDesktopToken]] asks for it alongside `inference`, `billing:read` and `org:read`. A token issued before that scope existed is refused by name (`token-scope-insufficient`) rather than failing as an outage.
 
-Wallets are NOT on this plane: they stay with the Hermes One account (there is no wallet API on kotoba.cloud), which is why [[src/main/wallet-sync.ts]] still reads `account-store`.
+Wallets are on this plane too: [[src/main/wallet-sync.ts]] reads `GET /v1/wallets` with the same token, resolved through `cloudAccount()` so the link stamp and the ownership check come from one place.
 
 ## Sync engine
 
@@ -20,13 +20,13 @@ Wallets are NOT on this plane: they stay with the Hermes One account (there is n
 
 The stored link (a profile's cloud `agentId`) is also read by [[wallet-token-balances#Wallet Sync]] via [[src/main/agent-sync.ts#getLinkedAgentId]], so backend-provisioned wallets can be fetched for the same agent.
 
-Requests are bearer-authenticated with the device-login token — the account is located app-wide by [[src/main/account-store.ts#findAccountProfile]] (the token is saved under whichever profile was active at sign-in). Linking keys on the cloud agent's stable `id`; names only match never-synced profiles to their cloud namesakes and are never used to rename.
+Requests are bearer-authenticated with the Kotoba Cloud personal API token from `cloudAccount()` (the DEFAULT profile's, device-wide). Linking keys on the cloud agent's stable `id`; names only match never-synced profiles to their cloud namesakes and are never used to rename.
 
 New links record both the normalized backend API URL and the owning user id. Links from a different recorded backend are skipped even when user ids coincide. Links are **account-scoped**: every state write records the owning backend user id, and a pass skips (never unlinks, never pushes) profiles whose link belongs to a different account — signing out and back in as someone else must not re-upload the first account's agents to the second. A missing cloud agent only unlinks when the state provably belongs to the current account; legacy states without an owner are adopted when their agent exists in the account's list and skipped with a warning otherwise. Wallet flows apply the same rule through [[src/main/agent-sync.ts#getLinkedAgentAccountId]] — see [[wallet-token-balances#Wallet Sync]].
 
 Per part, the pure [[src/main/agent-sync.ts#decidePartAction]] compares the last-sync base hash with both sides' current hashes: only one side moved → that side wins; both moved (or first sync) → last-writer-wins by timestamp (local file mtime vs the agent's `updatedAt`). Equal content is always a no-op.
 
-Pushes are built by [[src/main/agent-sync.ts#buildPushBody]], which enforces the backend's field limits by *skipping* oversize parts with a warning — truncating and later pulling back would destroy local content. An unset local model is also skipped so a PATCH can't clobber the cloud value with an empty string. Pulls write through the existing per-part helpers: [[src/main/soul.ts#writeSoul]], [[src/main/memory.ts#writeMemoryRaw]], [[src/main/profile-meta.ts#setProfileColor]], and [[src/main/config.ts#setModelConfig]] (preserving the local base URL).
+Pushes are built by [[src/main/agent-sync.ts#buildPushBody]], which enforces the backend's field limits by _skipping_ oversize parts with a warning — truncating and later pulling back would destroy local content. An unset local model is also skipped so a PATCH can't clobber the cloud value with an empty string. Pulls write through the existing per-part helpers: [[src/main/soul.ts#writeSoul]], [[src/main/memory.ts#writeMemoryRaw]], [[src/main/profile-meta.ts#setProfileColor]], and [[src/main/config.ts#setModelConfig]] (preserving the local base URL).
 
 A profile's stable **id** (its directory slug), not its editable display **name**, keys every on-disk operation — `getModelConfig`/`readSoul`/`readMemoryRaw`, the `cloud-sync.json` state file, and all pull writes — so a renamed profile keeps syncing against the same directory. The display `name` is used only as the cloud agent's human label (create/name-match/warnings).
 
@@ -112,7 +112,6 @@ It could be a console deletion or another account's agent — and a wrong unlink
 
 Every successful pass stamps the current account's user id into the state file, adopting legacy links whose agent exists in this account's list.
 
-
 ### Keeps deleted profiles deleted after restart
 
 Deleting a renamed linked profile removes its directory while preserving its cloud-id exclusion outside that directory. Reloading the sync module and syncing the retained cloud copy must neither recreate the profile nor delete the cloud agent.
@@ -137,7 +136,6 @@ A CLI that exits successfully but leaves the profile directory must produce a fa
 
 The profile modal disables duplicate deletion while a request is pending, displays both structured failures and IPC rejections, preserves the modal, and allows a retry.
 
-
 ### Does not infer deletion from invalid responses
 
 Malformed, missing, or interrupted successful cloud-list responses must leave links intact. A failed request releases the operation queue so a pending local deletion can complete safely.
@@ -145,7 +143,6 @@ Malformed, missing, or interrupted successful cloud-list responses must leave li
 ### Retains the identity after a failed import
 
 Cloud import records its identity and pre-import local hashes before asynchronous writes. A failed part remains retryable without pushing defaults, and deletion can still exclude the retained cloud copy.
-
 
 ### Enforces backend ownership for wallets
 
@@ -156,7 +153,6 @@ Wallet listing, provisioning, and portfolio reads reject a link recorded under a
 Cloud-list responses must include valid identity, color, nullable persona/memory, model/provider, and timestamp fields. Missing or invalid values cannot trigger unlinking or push local defaults over cloud content.
 
 Empty model/provider strings remain accepted because the backend permits them; an empty remote model never clears the local selection.
-
 
 ### Waits for ownership adoption already in progress
 

@@ -16,6 +16,7 @@ import {
   isAllowedWebviewUrl,
 } from "../security";
 import { registerIpcHandlers } from "../ipc/register";
+import { migrateKotobaTokensToKeychain } from "../kotoba-cloud-account";
 import { setGatewayPromptParent } from "../gatewayPrompt";
 import { showChatContextMenu } from "./context-menu";
 import { buildMenu } from "./menu";
@@ -103,6 +104,16 @@ export function startMainProcess(): void {
       }
       callback({ responseHeaders });
     });
+
+    // Move a plaintext Kotoba Cloud token out of any profile .env into the
+    // OS keychain before anything spawns an agent (safeStorage needs `ready`).
+    try {
+      const moved = migrateKotobaTokensToKeychain();
+      if (Object.keys(moved).length > 0)
+        console.log("[kotoba-cloud] token migration:", moved);
+    } catch (err) {
+      console.warn("[kotoba-cloud] token migration failed:", err);
+    }
 
     createWindow();
     buildMenu({ getMainWindow: () => mainWindow, openExternalUrl });

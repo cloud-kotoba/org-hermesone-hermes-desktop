@@ -10,6 +10,16 @@ import { tmpdir } from "os";
 import { join } from "path";
 
 const profileHomeRef = vi.hoisted(() => ({ value: "C:/hermes" }));
+const keychainToken = vi.hoisted(() => ({ value: null as string | null }));
+
+// The Kotoba Cloud token lives in the keychain store, not in .env.
+vi.mock("../src/main/kotoba-cloud-token-store", () => ({
+  readStoredKotobaToken: () => keychainToken.value,
+  hasStoredKotobaToken: () => keychainToken.value !== null,
+  kotobaSecureStorageAvailable: () => true,
+  writeStoredKotobaToken: () => {},
+  clearStoredKotobaToken: () => {},
+}));
 
 const { execFileSpy } = vi.hoisted(() => ({
   execFileSpy: vi.fn(
@@ -29,6 +39,12 @@ vi.mock("child_process", () => ({
 
 vi.mock("../src/main/utils", () => ({
   profileHome: () => profileHomeRef.value,
+  // the cron spawn env reads the profile env for keychain-held keys
+  profilePaths: () => ({
+    home: profileHomeRef.value,
+    envFile: `${profileHomeRef.value}/.env`,
+    configFile: `${profileHomeRef.value}/config.yaml`,
+  }),
 }));
 
 vi.mock("../src/main/hermes", () => ({
@@ -72,6 +88,23 @@ describe("createCronJob", () => {
       "telegram",
     ]);
     expect(execFileSpy.mock.calls[0][1]).not.toContain("--");
+    // the first test pays the cold import of the config graph
+  }, 20_000);
+
+  // @lat: [[kotoba-cloud-account#Kotoba Cloud account#Tests]]
+  it("injects the keychain-held KOTOBA_API_KEY into the cron child env", async () => {
+    keychainToken.value = "kc_pat_p.d5cc449fa4d5.mac";
+    try {
+      vi.resetModules(); // readEnv caches the profile env for 5s
+      const { createCronJob } = await import("../src/main/cronjobs");
+      await createCronJob("0 9 * * *", "hello", "n", "origin");
+      const options = execFileSpy.mock.calls[0][2] as {
+        env?: Record<string, string>;
+      };
+      expect(options.env?.KOTOBA_API_KEY).toBe("kc_pat_p.d5cc449fa4d5.mac");
+    } finally {
+      keychainToken.value = null;
+    }
   });
 });
 

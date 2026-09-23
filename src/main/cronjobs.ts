@@ -10,7 +10,7 @@ import {
   getRemoteAuthHeader,
   normaliseRemoteUrl,
 } from "./hermes";
-import { getConnectionConfig } from "./config";
+import { getConnectionConfig, secureSpawnEnv } from "./config";
 import { HIDDEN_SUBPROCESS_OPTIONS } from "./process-options";
 import { sshRunCron } from "./ssh-remote";
 import type { SshConfig } from "./ssh-tunnel";
@@ -340,6 +340,8 @@ function runCronCommand(
       {
         cwd: join(HERMES_HOME, "hermes-agent"),
         timeout: 15000,
+        // keychain-held keys the agent can no longer read from .env
+        env: { ...process.env, ...secureSpawnEnv(profile) },
         ...HIDDEN_SUBPROCESS_OPTIONS,
       },
       (err, stdout, stderr) => {

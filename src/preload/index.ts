@@ -33,6 +33,7 @@ import type {
   KotobaCloudAccount,
   KotobaCloudConnectResult,
   KotobaCloudViewerInfo,
+  KotobaOrgState,
   KotobaGatewayInfo,
 } from "../shared/account";
 import type { AgentSyncResult, AgentSyncStatus } from "../shared/agent-sync";
@@ -312,6 +313,14 @@ const hermesAPI = {
   }> => ipcRenderer.invoke("kotoba-cloud-sign-in", profile),
   getKotobaCloudViewer: (): Promise<KotobaCloudViewerInfo> =>
     ipcRenderer.invoke("kotoba-cloud-viewer"),
+  // Organization switcher: memberships + the persisted billing context
+  getKotobaOrgs: (profile?: string): Promise<KotobaOrgState> =>
+    ipcRenderer.invoke("kotoba-cloud-orgs-get", profile),
+  selectKotobaOrg: (
+    handle: string | null,
+    profile?: string,
+  ): Promise<KotobaCloudAccount | null> =>
+    ipcRenderer.invoke("kotoba-cloud-org-select", handle, profile),
   signOutKotobaCloud: (): Promise<void> =>
     ipcRenderer.invoke("kotoba-cloud-sign-out"),
   // The gateway kotoba.cloud provides (per-user Hermes sandbox)

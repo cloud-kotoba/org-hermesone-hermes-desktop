@@ -9,6 +9,7 @@ import { join } from "path";
 import {
   getActiveConnection,
   getConnectionConfig,
+  secureSpawnEnv,
   type ConnectionConfig,
 } from "./config";
 import {
@@ -674,6 +675,8 @@ export async function startDashboard(
         HERMES_HOME,
         HERMES_DASHBOARD_SESSION_TOKEN: token,
         HERMES_DESKTOP: "1",
+        // keychain-held keys (KOTOBA_API_KEY) the agent can no longer read from .env
+        ...secureSpawnEnv(resolvedProfile),
         ...(hasPrebuiltWebDist
           ? { HERMES_WEB_DIST: join(HERMES_REPO, "hermes_cli", "web_dist") }
           : {}),

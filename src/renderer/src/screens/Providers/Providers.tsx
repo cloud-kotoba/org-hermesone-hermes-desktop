@@ -25,6 +25,7 @@ import { ChevronDown, X, LayoutGrid, Eye, EyeOff, Coins } from "lucide-react";
 import { customProviderEnvKey } from "../../../../shared/url-key-map";
 import type {
   KotobaCloudAccount,
+  KotobaOrgState,
   KotobaGatewayInfo,
 } from "../../../../shared/account";
 
@@ -255,6 +256,46 @@ function Providers({
       cancelled = true;
     };
   }, [profile, env.KOTOBA_API_KEY]);
+
+  // Organization switcher: the account's orgs + the persisted billing
+  // context. Read once per token (not per balance refresh); null = loading.
+  const [orgs, setOrgs] = useState<KotobaOrgState | null>(null);
+  const accountTokenId = account?.tokenId ?? null;
+  const accountLive = account?.live ?? false;
+  useEffect(() => {
+    if (!accountTokenId || !accountLive) {
+      setOrgs(null);
+      return;
+    }
+    let cancelled = false;
+    void window.hermesAPI
+      .getKotobaOrgs(profile)
+      .then((o) => {
+        if (!cancelled) setOrgs(o);
+      })
+      .catch((err) => {
+        if (!cancelled)
+          setOrgs({
+            memberships: {
+              status: "error",
+              error: (err as Error)?.message || "error",
+            },
+            selected: null,
+          });
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [profile, accountTokenId, accountLive]);
+  async function selectBillingContext(handle: string | null): Promise<void> {
+    setOrgs((o) => (o ? { ...o, selected: handle } : o));
+    try {
+      const next = await window.hermesAPI.selectKotobaOrg(handle, profile);
+      if (next) setAccount(next);
+    } catch {
+      /* the chip keeps the previous balance; the selection re-reads on next visit */
+    }
+  }
 
   // Per-key debounce timers for env auto-save on change. Previously env
   // values were persisted only on input blur, so users who clicked the
@@ -753,10 +794,27 @@ function Providers({
                     {account.live && account.balance === null && (
                       <span
                         className="hermes-account-chip"
-                        title={t("providers.kotobaAccount.creditsUnknownTitle")}
+                        title={
+                          account.error === "org-role-insufficient"
+                            ? t(
+                                "providers.kotobaAccount.orgRoleInsufficientTitle",
+                              )
+                            : t("providers.kotobaAccount.creditsUnknownTitle")
+                        }
                       >
                         <Coins size={11} aria-hidden="true" />
                         {t("providers.kotobaAccount.creditsUnknown")}
+                      </span>
+                    )}
+                    {account.storage === "plaintext" && (
+                      <span
+                        className="hermes-account-chip"
+                        title={
+                          account.storageWarning ||
+                          t("providers.kotobaAccount.storagePlaintextTitle")
+                        }
+                      >
+                        {t("providers.kotobaAccount.storagePlaintext")}
                       </span>
                     )}
                   </span>
@@ -765,7 +823,9 @@ function Providers({
                   type="button"
                   className="btn btn-secondary btn-sm"
                   onClick={() =>
-                    void window.hermesAPI.openExternal(account.accountUrl)
+                    void window.hermesAPI.openExternal(
+                      account.manageUrl || account.accountUrl,
+                    )
                   }
                 >
                   {t("providers.kotobaAccount.manage")}
@@ -782,6 +842,93 @@ function Providers({
                 >
                   {t("providers.kotobaAccount.signOut")}
                 </button>
+                {account.live && (
+                  <div
+                    className="kotoba-gateway-row"
+                    title={t("providers.kotobaAccount.contextHint")}
+                  >
+                    <span className="kotoba-gateway-label">
+                      {t("providers.kotobaAccount.contextLabel")}:
+                    </span>
+                    {orgs === null ? (
+                      <span>{t("providers.kotobaAccount.orgsLoading")}</span>
+                    ) : orgs.memberships.status === "ok" &&
+                      orgs.memberships.orgs.length > 0 ? (
+                      <select
+                        className="input"
+                        aria-label={t("providers.kotobaAccount.contextLabel")}
+                        value={orgs.selected ?? ""}
+                        onChange={(e) =>
+                          void selectBillingContext(e.target.value || null)
+                        }
+                      >
+                        <option value="">
+                          {t("providers.kotobaAccount.contextPersonal")}
+                        </option>
+                        {orgs.memberships.orgs.map((o) => (
+                          <option key={o.handle} value={o.handle}>
+                            {t("providers.kotobaAccount.contextOrg", {
+                              handle: o.handle,
+                              role: o.role,
+                            })}
+                          </option>
+                        ))}
+                      </select>
+                    ) : (
+                      <>
+                        <span>
+                          {orgs.selected ??
+                            t("providers.kotobaAccount.contextPersonal")}
+                        </span>
+                        {orgs.memberships.status === "ok" && (
+                          <span className="settings-section-hint">
+                            {t("providers.kotobaAccount.orgsNone")}
+                          </span>
+                        )}
+                        {orgs.memberships.status === "reconnect" && (
+                          <>
+                            <span
+                              className="settings-section-hint"
+                              title={t(
+                                "providers.kotobaAccount.orgsReconnectTitle",
+                              )}
+                            >
+                              {t("providers.kotobaAccount.orgsReconnect")}
+                            </span>
+                            <button
+                              type="button"
+                              className="btn btn-secondary btn-sm"
+                              title={t(
+                                "providers.kotobaAccount.orgsReconnectTitle",
+                              )}
+                              onClick={() => setShowAccountModal(true)}
+                            >
+                              {t("providers.kotobaAccount.orgsReconnectAction")}
+                            </button>
+                          </>
+                        )}
+                        {orgs.memberships.status === "unavailable" && (
+                          <span
+                            className="settings-section-hint"
+                            title={t(
+                              "providers.kotobaAccount.orgsUnavailableTitle",
+                            )}
+                          >
+                            {t("providers.kotobaAccount.orgsUnavailable")}
+                          </span>
+                        )}
+                        {orgs.memberships.status === "error" && (
+                          <span
+                            className="settings-section-hint"
+                            title={orgs.memberships.error}
+                          >
+                            {t("providers.kotobaAccount.orgsError")}
+                          </span>
+                        )}
+                      </>
+                    )}
+                  </div>
+                )}
                 <div className="kotoba-gateway-row">
                   <span className="kotoba-gateway-label">
                     {t("providers.kotobaAccount.gatewayLabel")}:

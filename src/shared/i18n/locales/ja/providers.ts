@@ -18,7 +18,7 @@ export default {
   kotobaAccount: {
     sectionTitle: "Kotoba Cloud アカウント",
     sectionHint:
-      "ブラウザで Kotoba Cloud にサインイン（Passkey）し、kotoba.cloud/account で personal API token を発行して、ここに接続します。この profile の KOTOBA_API_KEY として保存され、Kotoba Cloud provider とエージェントがそれを使います。",
+      "ブラウザで Kotoba Cloud にサインイン（Passkey）し、kotoba.cloud/account で personal API token を発行して、ここに接続します。この profile の KOTOBA_API_KEY として（.env ではなく OS のキーチェーンに）保存され、Kotoba Cloud provider とエージェントがそれを使います。",
     signIn: "Kotoba Cloud にサインイン",
     signOut: "接続を解除",
     connected: "接続済み",
@@ -63,5 +63,25 @@ export default {
     gatewayLaunching: "起動中…",
     gatewayOpenHint:
       "クラウド上の Hermes（Web UI 全体）をウィンドウで開きます。デスクトップ自身のチャットはローカル Hermes のままです。",
+    contextLabel: "請求先",
+    contextPersonal: "個人",
+    contextOrg: "{{handle}}（{{role}}）",
+    contextHint:
+      "残高をどの台帳で表示するか: 個人のクレジット、または組織のもの。メンバーと席数は kotoba.cloud で管理します。",
+    orgsLoading: "組織を読み込み中…",
+    orgsReconnect: "組織を表示するには再接続してください",
+    orgsReconnectTitle:
+      "このトークンは org:read scope ができる前に発行されました。Passkey でもう一度サインインすると、組織を読めるトークンが発行されます。",
+    orgsReconnectAction: "再接続",
+    orgsUnavailable: "組織機能は利用できません",
+    orgsUnavailableTitle:
+      "kotoba.cloud はまだ組織メンバーシップを提供していません（GET /v1/org/memberships が 404）。",
+    orgsNone: "所属している組織はありません",
+    orgsError: "組織を読み込めませんでした",
+    orgRoleInsufficientTitle:
+      "この組織の残高を読めるのは owner・admin・billing のメンバーだけです。",
+    storagePlaintext: "平文で保存",
+    storagePlaintextTitle:
+      "OS のキーチェーンが使えないため、トークンはこの profile の .env に平文で保存されています。",
   },
 } as const;

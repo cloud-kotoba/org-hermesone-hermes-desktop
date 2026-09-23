@@ -84,7 +84,9 @@ vi.mock("./kotoba-cloud-account", () => ({
   get KOTOBA_CLOUD_ORIGIN() {
     return mockState.account?.apiUrl ?? "https://kotoba.cloud";
   },
-  KOTOBA_API_KEY_ENV: "KOTOBA_API_KEY",
+  // the token lives with the DEFAULT profile (keychain store); a signed-out
+  // desktop has none, which is what "signed-out" means for sync
+  kotobaCloudToken: () => mockState.account?.token || null,
   kotobaPrincipalId: (token: string) =>
     token ? (mockState.account?.userId ?? "u1") : null,
 }));
@@ -147,8 +149,6 @@ vi.mock("./memory", () => ({
 }));
 
 vi.mock("./config", () => ({
-  // the token lives in the DEFAULT profile's .env; a signed-out desktop has
-  // no value there, which is what "signed-out" means for sync
   readEnv: () => ({ KOTOBA_API_KEY: mockState.account?.token ?? "" }),
   getModelConfig: (profile?: string) =>
     mockState.models.get(profile ?? "default") ?? {
