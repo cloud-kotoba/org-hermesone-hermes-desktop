@@ -7,7 +7,7 @@ import {
   getEnhancedPath,
 } from "./installer";
 import { isRemoteOnlyMode } from "./hermes";
-import { getConnectionConfig } from "./config";
+import { getConnectionConfig, secureSpawnEnv } from "./config";
 import { sshRunKanban, sshListClaw3dHqTasks } from "./ssh-remote";
 
 export interface KanbanTask {
@@ -128,7 +128,12 @@ async function runKanban(
   const execOpts: ExecFileOptions = {
     cwd: join(HERMES_HOME, "hermes-agent"),
     timeout: opts.timeoutMs ?? KANBAN_TIMEOUT_MS,
-    env: { ...process.env, PATH: getEnhancedPath() },
+    // keychain-held keys (KOTOBA_API_KEY) the agent can no longer read from .env
+    env: {
+      ...process.env,
+      PATH: getEnhancedPath(),
+      ...secureSpawnEnv(opts.profile),
+    },
     maxBuffer: 16 * 1024 * 1024,
   };
 

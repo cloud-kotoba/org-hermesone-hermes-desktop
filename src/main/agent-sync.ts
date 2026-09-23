@@ -4,10 +4,9 @@ import { readFileSync, statSync, unlinkSync } from "fs";
 import { join } from "path";
 import {
   KOTOBA_CLOUD_ORIGIN,
-  KOTOBA_API_KEY_ENV,
+  kotobaCloudToken,
   kotobaPrincipalId,
 } from "./kotoba-cloud-account";
-import { readEnv } from "./config";
 import {
   listProfiles,
   createProfile,
@@ -484,7 +483,8 @@ export function cloudAccount(): {
   accountId: string;
   token: string;
 } | null {
-  const token = (readEnv(undefined)[KOTOBA_API_KEY_ENV] || "").trim();
+  // the one accessor — keychain store, or plaintext .env without a keychain
+  const token = kotobaCloudToken(undefined);
   if (!token) return null;
   const accountId = kotobaPrincipalId(token);
   if (!accountId) return null;

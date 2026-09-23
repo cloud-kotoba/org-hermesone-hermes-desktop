@@ -69,7 +69,7 @@ export default {
   kotobaAccount: {
     sectionTitle: "Kotoba Cloud account",
     sectionHint:
-      "Sign in to Kotoba Cloud in your browser (Passkey), issue a personal API token on kotoba.cloud/account, and connect it here. It becomes this profile's KOTOBA_API_KEY — the key the Kotoba Cloud provider and the agent use.",
+      "Sign in to Kotoba Cloud in your browser (Passkey), issue a personal API token on kotoba.cloud/account, and connect it here. It becomes this profile's KOTOBA_API_KEY — the key the Kotoba Cloud provider and the agent use — and is kept in the OS keychain, not in .env.",
     signIn: "Sign in to Kotoba Cloud",
     signOut: "Disconnect",
     connected: "Connected",
@@ -113,6 +113,26 @@ export default {
     gatewayLaunching: "Launching…",
     gatewayOpenHint:
       "Opens Kotoba chat — your cloud agent's full web UI — in a window. The desktop's own chat still talks to the local Hermes.",
+    contextLabel: "Billing",
+    contextPersonal: "Personal",
+    contextOrg: "{{handle}} ({{role}})",
+    contextHint:
+      "Which ledger the balance shows: your personal credit or an organization's. Members and seats are managed on kotoba.cloud.",
+    orgsLoading: "loading organizations…",
+    orgsReconnect: "Reconnect to see organizations",
+    orgsReconnectTitle:
+      "This token was issued before the org:read scope existed. Sign in with Passkey again to issue one that can list your organizations.",
+    orgsReconnectAction: "Reconnect",
+    orgsUnavailable: "organizations unavailable",
+    orgsUnavailableTitle:
+      "kotoba.cloud does not serve organization memberships yet (GET /v1/org/memberships answered 404).",
+    orgsNone: "no organizations",
+    orgsError: "couldn't load organizations",
+    orgRoleInsufficientTitle:
+      "Only an owner, admin or billing member can read this organization's balance.",
+    storagePlaintext: "stored in plaintext",
+    storagePlaintextTitle:
+      "The OS keychain is unavailable, so the token is kept in this profile's .env in plaintext.",
   },
   hermesAccount: {
     sectionTitle: "Hermes One account",

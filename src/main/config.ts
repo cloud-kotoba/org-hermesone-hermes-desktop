@@ -10,6 +10,13 @@ import {
   safeWriteFile,
 } from "./utils";
 import { getYamlPath } from "./yaml-path";
+import {
+  clearStoredKotobaToken,
+  hasStoredKotobaToken,
+  kotobaSecureStorageAvailable,
+  readStoredKotobaToken,
+  writeStoredKotobaToken,
+} from "./kotoba-cloud-token-store";
 // NOTE: ./secrets imports back into this module (getConfigValue / readEnv), so
 // this is a static import that closes a cycle (config -> secrets ->
 // commandProvider -> config). It is safe ONLY because BOTH sides defer all work
@@ -515,11 +522,57 @@ export function invalidateSecretsCache(): void {
   invalidateProviderListCache();
 }
 
+/**
+ * The Kotoba Cloud token's env name. Its value does not live in `.env` when
+ * the OS keychain is available: `readEnv` overlays it from the encrypted
+ * store (kotoba-cloud-token-store.ts) and `setEnvValue` writes it there, so
+ * every reader of the profile env — the provider cards, config-health, and
+ * each agent spawn that copies `readEnv` into the child env — sees it without
+ * a plaintext copy on disk.
+ */
+export const KOTOBA_SECURE_ENV_KEY = "KOTOBA_API_KEY";
+
 export function readEnv(profile?: string): Record<string, string> {
   const cacheKey = `env:${profile || "default"}`;
   const cached = getCached<Record<string, string>>(cacheKey);
   if (cached) return cached;
 
+  const result = readEnvFile(profile);
+  // A plaintext `.env` value wins (the keychain was unavailable when it was
+  // written, or something outside the desktop wrote it — startup migration
+  // moves it); otherwise the encrypted store supplies the key.
+  if (!(result[KOTOBA_SECURE_ENV_KEY] || "").trim()) {
+    const stored = readStoredKotobaToken(profile);
+    if (stored) result[KOTOBA_SECURE_ENV_KEY] = stored;
+  }
+
+  setCache(cacheKey, result);
+  return result;
+}
+
+/**
+ * The environment the desktop injects into every Hermes child it spawns for a
+ * profile, for keys that no longer live in the `.env` the agent reads itself.
+ * Spawn sites that copy all of `readEnv` already carry them; the ones that
+ * rely on the agent loading `.env` (dashboard, cron, kanban, the CLI chat
+ * fallback) spread this.
+ */
+export function secureSpawnEnv(profile?: string): Record<string, string> {
+  try {
+    const value = (readEnv(profile)[KOTOBA_SECURE_ENV_KEY] || "").trim();
+    return value ? { [KOTOBA_SECURE_ENV_KEY]: value } : {};
+  } catch (err) {
+    // A spawn must not fail on this lookup; the agent then reports the
+    // missing key by name when it first needs Kotoba Cloud.
+    console.warn(
+      `[kotoba-cloud] could not resolve ${KOTOBA_SECURE_ENV_KEY} for the spawn env: ${(err as Error).message}`,
+    );
+    return {};
+  }
+}
+
+/** The `.env` file as written on disk — no keychain overlay, not cached. */
+export function readEnvFile(profile?: string): Record<string, string> {
   const { envFile } = profilePaths(profile);
   if (!existsSync(envFile)) return {};
 
@@ -544,9 +597,76 @@ export function readEnv(profile?: string): Record<string, string> {
     result[key] = value;
   }
 
-  setCache(cacheKey, result);
   return result;
 }
+
+/** Remove every (possibly commented) `KEY=` line from a profile's `.env`. */
+export function removeEnvKey(key: string, profile?: string): void {
+  const { envFile } = profilePaths(profile);
+  invalidateCache(`env:${profile || "default"}`);
+  if (!existsSync(envFile)) return;
+  const content = readFileSync(envFile, "utf-8");
+  const re = new RegExp(`^#?\\s*${escapeRegex(key)}\\s*=`);
+  const lines = content.split("\n");
+  const kept = lines.filter((line) => !re.test(line.trim()));
+  if (kept.length !== lines.length) safeWriteFile(envFile, kept.join("\n"));
+}
+
+/**
+ * Warnings the secure-env path produced (keychain unavailable, a write that
+ * fell back to plaintext), per profile, for the account card to show.
+ */
+const secureEnvWarnings = new Map<string, string>();
+
+export function secureEnvWarning(profile?: string): string | undefined {
+  return secureEnvWarnings.get(profile || "default");
+}
+
+export function setSecureEnvWarning(
+  profile: string | undefined,
+  warning: string | undefined,
+): void {
+  const key = profile || "default";
+  if (warning) secureEnvWarnings.set(key, warning);
+  else secureEnvWarnings.delete(key);
+}
+
+/**
+ * Write `KOTOBA_API_KEY`: into the keychain-encrypted store when it is
+ * available (and drop any plaintext line), otherwise into `.env` as before
+ * with a warning recorded — the token is never silently dropped.
+ */
+function setSecureEnvValue(value: string, profile?: string): void {
+  const token = value.trim();
+  invalidateCache(`env:${profile || "default"}`);
+  if (!token) {
+    clearStoredKotobaToken(profile);
+    removeEnvKey(KOTOBA_SECURE_ENV_KEY, profile);
+    setSecureEnvWarning(profile, undefined);
+    return;
+  }
+  if (kotobaSecureStorageAvailable()) {
+    try {
+      writeStoredKotobaToken(profile, token);
+      removeEnvKey(KOTOBA_SECURE_ENV_KEY, profile);
+      setSecureEnvWarning(profile, undefined);
+      return;
+    } catch (err) {
+      console.warn(
+        `[kotoba-cloud] keychain write failed, keeping the token in .env: ${(err as Error).message}`,
+      );
+    }
+  }
+  // Plaintext fallback. A stale encrypted copy would shadow nothing (the
+  // .env value wins in readEnv) but would resurrect an old token after a
+  // later disconnect — remove it.
+  if (hasStoredKotobaToken(profile)) clearStoredKotobaToken(profile);
+  setSecureEnvWarning(profile, KOTOBA_PLAINTEXT_WARNING);
+  writeEnvLine(KOTOBA_SECURE_ENV_KEY, token, profile);
+}
+
+export const KOTOBA_PLAINTEXT_WARNING =
+  "The OS keychain is unavailable, so the Kotoba Cloud token is stored in plaintext in this profile's .env.";
 
 export function setEnvValue(
   key: string,
@@ -554,7 +674,14 @@ export function setEnvValue(
   profile?: string,
 ): void {
   validateEnvEntry(key, value);
+  if (key === KOTOBA_SECURE_ENV_KEY) {
+    setSecureEnvValue(value, profile);
+    return;
+  }
+  writeEnvLine(key, value, profile);
+}
 
+function writeEnvLine(key: string, value: string, profile?: string): void {
   const { envFile } = profilePaths(profile);
   invalidateCache(`env:${profile || "default"}`);
   if (key === "API_SERVER_KEY") invalidateCache("apiServerKey:");

@@ -1,6 +1,7 @@
 // @lat: [[provider-setup#Provider setup#Agent config sync for named providers]]
 import { existsSync, readFileSync } from "fs";
 import { profilePaths, safeWriteFile } from "./utils";
+import { hasStoredKotobaToken } from "./kotoba-cloud-token-store";
 
 /**
  * Bridge between hermes-agent's config.yaml provider sections and the
@@ -345,10 +346,12 @@ const KOTOBA_BASE_URL = "https://api.kotoba.cloud/v1";
 export function mirrorFirstPartyAgentProviders(profile?: string): void {
   try {
     const { envFile } = profilePaths(profile);
-    if (!existsSync(envFile)) return;
-    const env = readFileSync(envFile, "utf-8");
+    const env = existsSync(envFile) ? readFileSync(envFile, "utf-8") : "";
     const kotoba = env.match(/^\s*KOTOBA_API_KEY\s*=\s*(.+)\s*$/m);
-    if (kotoba && kotoba[1].trim()) {
+    // The Kotoba Cloud token normally lives in the keychain store, not .env
+    // (kotoba-cloud-token-store.ts); either place means "keyed". The agent
+    // gets the value in its spawn env (config.ts secureSpawnEnv / readEnv).
+    if ((kotoba && kotoba[1].trim()) || hasStoredKotobaToken(profile)) {
       upsertAgentUserProvider(profile, {
         slug: "kotoba",
         name: "Kotoba Cloud",

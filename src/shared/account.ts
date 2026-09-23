@@ -36,6 +36,43 @@ export interface KotobaCloudAccount {
   live: boolean;
   balance: number | null;
   error?: string;
+  /** Where the token is at rest: the OS keychain, or plaintext `.env` when
+   *  the keychain is unavailable (then `storageWarning` says so). */
+  storage?: "keychain" | "plaintext";
+  storageWarning?: string;
+  /** The billing context `balance` belongs to: null = personal, else the
+   *  selected organization's handle. */
+  org?: string | null;
+  /** kotoba.cloud page to manage the selected context. */
+  manageUrl?: string;
+}
+
+/** One organization the signed-in person belongs to (`GET /v1/org/memberships`). */
+export interface KotobaOrgMembership {
+  handle: string;
+  did: string;
+  role: string;
+  plan: string | null;
+  seatLimit: number | null;
+  memberCount: number;
+}
+
+/**
+ * The memberships read, with every non-list answer named so the UI never
+ * shows an empty list for something that is not "no organizations":
+ * `reconnect` — the token predates the `org:read` scope; `unavailable` — the
+ * route is not deployed (404); `signed-out` — no token; `error` — anything
+ * else (network, 5xx, revoked).
+ */
+export type KotobaOrgMemberships =
+  | { status: "ok"; orgs: KotobaOrgMembership[] }
+  | { status: "reconnect" | "unavailable" | "signed-out" }
+  | { status: "error"; error: string };
+
+export interface KotobaOrgState {
+  memberships: KotobaOrgMemberships;
+  /** The persisted selection: null = Personal. */
+  selected: string | null;
 }
 
 /** The desktop's signed-in Kotoba Cloud session (Passkey in a window). */

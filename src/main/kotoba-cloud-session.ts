@@ -231,9 +231,11 @@ export function openKotobaCloudSignIn(
 
 /**
  * Issue this machine's personal API token from the signed-in session — the
- * console's own POST, shown once. `inference` + `billing:read` + `agents` is
- * what the desktop uses (chat, the balance on the account card, and backing
- * agents up through /v1/agents); it never asks for `account`.
+ * console's own POST, shown once. `inference` + `billing:read` + `agents` +
+ * `org:read` is what the desktop uses (chat, the balance on the account card,
+ * backing agents up through /v1/agents, and listing the account's
+ * organizations for the billing-context switcher); it never asks for
+ * `account`.
  */
 export async function issueDesktopToken(): Promise<{
   token: string;
@@ -245,7 +247,10 @@ export async function issueDesktopToken(): Promise<{
     {
       method: "POST",
       origin: KOTOBA_CLOUD_ORIGIN,
-      body: { label, scopes: ["inference", "billing:read", "agents"] },
+      body: {
+        label,
+        scopes: ["inference", "billing:read", "agents", "org:read"],
+      },
     },
   );
   const b = (body ?? {}) as Record<string, unknown>;

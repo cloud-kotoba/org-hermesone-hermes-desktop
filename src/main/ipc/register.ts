@@ -109,7 +109,13 @@ import {
   connectKotobaCloud,
   disconnectKotobaCloud,
   kotobaCloudAccount,
+  kotobaCloudToken,
 } from "../kotoba-cloud-account";
+import {
+  fetchKotobaOrgMemberships,
+  getKotobaOrgSelection,
+  setKotobaOrgSelection,
+} from "../kotoba-cloud-orgs";
 import {
   issueDesktopToken,
   kotobaCloudViewer,
@@ -1070,6 +1076,36 @@ export function registerIpcHandlers(context: IpcContext): void {
     }
     return { viewer, tokenId: issued.tokenId, result };
   });
+  // Organization switcher (this fork): the account's orgs from
+  // GET /v1/org/memberships and the persisted billing context. A selection
+  // the account no longer belongs to falls back to Personal — only when the
+  // list was actually read (a 403/404 must not clear it).
+  ipcMain.handle("kotoba-cloud-orgs-get", async (_event, profile?: string) => {
+    const target = profile?.trim() || getActiveProfileNameSync();
+    const memberships = await fetchKotobaOrgMemberships(
+      kotobaCloudToken(target),
+    );
+    let selected = getKotobaOrgSelection(target);
+    if (
+      selected &&
+      memberships.status === "ok" &&
+      !memberships.orgs.some((o) => o.handle === selected)
+    ) {
+      selected = setKotobaOrgSelection(target, null);
+    }
+    return { memberships, selected };
+  });
+  ipcMain.handle(
+    "kotoba-cloud-org-select",
+    (_event, handle: string | null, profile?: string) => {
+      const target = profile?.trim() || getActiveProfileNameSync();
+      setKotobaOrgSelection(
+        target,
+        typeof handle === "string" && handle ? handle : null,
+      );
+      return kotobaCloudAccount(target);
+    },
+  );
   ipcMain.handle("kotoba-cloud-viewer", () => kotobaCloudViewer());
   ipcMain.handle("kotoba-cloud-sign-out", () => signOutKotobaCloud());
 

@@ -24,7 +24,8 @@ This directory defines the high-level concepts, business logic, and architecture
 - [[onboarding]] — the shared cinematic first-run chrome (OnboardHero): aurora backdrop, animated Hermes emblem with the big-centre → fly-up intro, and the Welcome / Install redesign built on it.
 - [[provider-setup]] — the first-run provider picker; its top grid mirrors the agent's native `CANONICAL_PROVIDERS` while OpenAI-compatible endpoints route through the Local presets.
 - [[hermes-account-login]] — desktop sign-in to a Hermes account via the RFC 8628 device grant; secure token storage, IPC, and the Providers-screen entry point.
-- [[agent-sync]] — bidirectional sync of desktop profiles with the signed-in account's cloud agents (persona, memory, color, model/provider) via the backend's `/api/agents`; hash-based per-part conflict handling, no deletion propagation.
+- [[agent-sync]] — bidirectional sync of desktop profiles with the signed-in Kotoba Cloud account's cloud agents (persona, memory, color, model/provider) via kotoba.cloud's `/v1/agents`; hash-based per-part conflict handling, no deletion propagation.
+- [[kotoba-cloud-account]] — Kotoba Cloud sign-in (Passkey session → personal API token), the token held in the OS keychain with a startup migration out of `.env` and injection into agent spawns, and the Personal/organization billing-context switcher.
 - [[kanban]] — the JIRA-style multi-agent board tab; a thin client over the `hermes kanban` CLI with canonical status columns, an archived toggle, and focus/poll refresh.
 - [[analytics]] — privacy-first, opt-out usage analytics that POST anonymous events to the in-house Hermes analytics service, keyed by a per-install localStorage UUID; replaces the former PostHog integration.
 - [[wallet-token-balances]] — profile-scoped Base mainnet wallets with encrypted recovery phrases, and on-chain ERC-20 token balance reads via ethers v6.
