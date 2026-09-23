@@ -1,10 +1,5 @@
 // @lat: [[wallet-token-balances#Wallet Sync]]
-import {
-  findAccountProfile,
-  getAccount,
-  getAccessToken,
-} from "./account-store";
-import { apiHeaders } from "./hermes-account";
+import { cloudAccount } from "./agent-sync";
 import {
   getLinkedAgentAccountId,
   getLinkedAgentApiUrl,
@@ -62,10 +57,12 @@ export async function resolveLinkedAgent(
   profile?: string,
 ): Promise<LinkedAgentResolution> {
   const name = profile || "default";
-  const accountProfile = findAccountProfile();
-  const account = accountProfile ? getAccount(accountProfile) : null;
-  const token = accountProfile ? getAccessToken(accountProfile) : null;
-  if (!account || !token) return { status: "signed-out" };
+  // The SAME account agent-sync stamps its links with. Reading a different
+  // one here is how every link reads `foreign`: the stamp and the check have
+  // to come from one place.
+  const account = cloudAccount();
+  if (!account) return { status: "signed-out" };
+  const token = account.token;
 
   let agentId = getLinkedAgentId(name);
   if (!agentId) {
@@ -79,7 +76,7 @@ export async function resolveLinkedAgent(
   let backend = getLinkedAgentApiUrl(name);
   const apiUrl = normalizeApiUrl(account.apiUrl);
   if (
-    (owner && owner !== account.user.id) ||
+    (owner && owner !== account.accountId) ||
     (backend && normalizeApiUrl(backend) !== apiUrl)
   ) {
     return { status: "foreign" };
@@ -97,7 +94,7 @@ export async function resolveLinkedAgent(
     backend = getLinkedAgentApiUrl(name);
   }
   if (
-    owner !== account.user.id ||
+    owner !== account.accountId ||
     !backend ||
     normalizeApiUrl(backend) !== apiUrl
   ) {
@@ -117,12 +114,20 @@ export async function syncWalletsForProfile(
   if (resolved.status !== "ok") {
     return { status: resolved.status, wallets: [] };
   }
-  const { apiUrl, token, agentId } = resolved;
+  const { apiUrl, token } = resolved;
 
   try {
     const res = await fetch(
-      `${apiUrl}/api/wallets?agentId=${encodeURIComponent(agentId)}`,
-      { headers: { ...apiHeaders(false), authorization: `Bearer ${token}` } },
+      // Kotoba Cloud's wallets belong to the ACCOUNT, not to one agent: the
+      // plane registers addresses a person controls, and an address is not a
+      // property of whichever profile happens to be selected.
+      `${apiUrl}/v1/wallets`,
+      {
+        headers: {
+          accept: "application/json",
+          authorization: `Bearer ${token}`,
+        },
+      },
     );
     if (!res.ok) {
       return {

@@ -37,6 +37,15 @@ vi.mock("./hermes-account", () => ({
 }));
 
 vi.mock("./agent-sync", () => ({
+  // wallet-sync now reads the SAME account agent-sync stamps links with
+  cloudAccount: () =>
+    mockState.account
+      ? {
+          apiUrl: mockState.account.apiUrl,
+          accountId: "u1",
+          token: mockState.account.token,
+        }
+      : null,
   getLinkedAgentId: () => mockState.linkedAgentId,
   getLinkedAgentAccountId: () => mockState.linkedAccountId,
   getLinkedAgentApiUrl: () => mockState.linkedApiUrl,
@@ -147,7 +156,9 @@ describe("syncWalletsForProfile", () => {
     expect(result.status).toBe("ok");
     // The addressless row is dropped.
     expect(result.wallets.map((w) => w.id)).toEqual(["wal-1"]);
-    expect(calls[0]).toContain("agentId=agent-1");
+    // Kotoba Cloud's wallets belong to the ACCOUNT: the request carries no
+    // agent id, because an address is not a property of one profile
+    expect(calls[0]).toBe("http://localhost:3002/v1/wallets");
     expect(mockState.syncAgentsCalls).toBe(0);
   });
 
@@ -161,7 +172,9 @@ describe("syncWalletsForProfile", () => {
     const result = await syncWalletsForProfile("default");
     expect(mockState.syncAgentsCalls).toBe(1);
     expect(result.status).toBe("ok");
-    expect(calls[0]).toContain("agentId=agent-new");
+    // Kotoba Cloud's wallets belong to the ACCOUNT: the request carries no
+    // agent id, because an address is not a property of one profile
+    expect(calls[0]).toBe("http://localhost:3002/v1/wallets");
   });
 
   it("stays unlinked when even a sync can't link the profile", async () => {
@@ -215,7 +228,9 @@ describe("syncWalletsForProfile", () => {
     const result = await syncWalletsForProfile("default");
     expect(mockState.syncAgentsCalls).toBe(1);
     expect(result.status).toBe("ok");
-    expect(calls[0]).toContain("agentId=agent-1");
+    // Kotoba Cloud's wallets belong to the ACCOUNT: the request carries no
+    // agent id, because an address is not a property of one profile
+    expect(calls[0]).toBe("http://localhost:3002/v1/wallets");
   });
 
   it("treats a legacy link the pass can't adopt as foreign — no backend call", async () => {

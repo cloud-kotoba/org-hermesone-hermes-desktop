@@ -65,15 +65,29 @@ export interface PortfolioTokenView {
   name: string;
   /** Human-readable amount (backend normalises decimals). */
   balance: number;
-  balanceUsd: number;
+  /**
+   * USD value, or null when the backend does not price. Kotoba Cloud's
+   * wallet plane reads balances off-chain-keylessly and has no price oracle;
+   * a 0 here would render as "worth nothing" rather than "not priced", which
+   * is the one mistake a balance display must not make. Render null as a
+   * dash.
+   */
+  balanceUsd: number | null;
 }
 
 /** Result of `GET /api/wallets/:id/portfolio` for a profile's cloud wallet. */
 export interface WalletPortfolioResult {
   /** `foreign`: the profile's cloud link belongs to a different account. */
   status: "ok" | "signed-out" | "unlinked" | "foreign" | "error";
-  totalUsd?: number;
+  /** null when the backend does not price (see PortfolioTokenView). */
+  totalUsd?: number | null;
   tokens?: PortfolioTokenView[];
+  /**
+   * Symbols whose balance could not be read this time. They are NOT listed
+   * among `tokens` as zero: "0" and "we could not ask" are different answers
+   * and only one of them is about the person's money.
+   */
+  unread?: string[];
   error?: string;
 }
 

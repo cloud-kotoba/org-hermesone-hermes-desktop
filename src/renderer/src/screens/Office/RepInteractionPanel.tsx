@@ -44,7 +44,11 @@ function formatAmount(value: number): string {
   return value.toLocaleString(undefined, { maximumFractionDigits: 4 });
 }
 
-function formatUsd(value: number): string {
+function formatUsd(value: number | null | undefined): string {
+  // An em dash, not "$0.00": Kotoba Cloud's wallet plane reads balances with
+  // no price oracle, and a zero here would say "worth nothing" about money
+  // that is merely unpriced.
+  if (value === null || value === undefined) return "—";
   if (value > 0 && value < 0.01) return "< $0.01";
   return `$${value.toLocaleString(undefined, {
     minimumFractionDigits: 2,
