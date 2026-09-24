@@ -2,15 +2,17 @@
 
 This fork's account surface: the Providers page signs in to Kotoba Cloud by connecting a personal API token, which becomes the profile's `KOTOBA_API_KEY` — held in the OS keychain, not in `.env`.
 
-kotoba.cloud authenticates people with a Passkey in the browser and issues personal API tokens (`kc_pat_<principal>.<tokenId>.<mac>`) on `kotoba.cloud/account`; there is no device-code or OAuth flow to reuse. So the desktop's account _is_ the token. [[src/main/kotoba-cloud-account.ts#connectKotobaCloud]] rejects anything that is not a `kc_pat_` token before any network call, proves a token against `GET https://kotoba.cloud/v1/billing/status` (the read-only route that accepts a token bearer), and only then writes `KOTOBA_API_KEY` through `setEnvValue` (which puts it in the keychain store, see [[kotoba-cloud-account#Kotoba Cloud account#Token at rest]]) and mirrors the `kotoba` agent provider. [[src/main/kotoba-cloud-account.ts#kotobaCloudAccount]] re-verifies the stored token on every read so a revoked token shows as "no longer valid" rather than as connected; a token without `billing:read` stays connected with the balance shown as unknown, not as zero. [[src/main/kotoba-cloud-account.ts#disconnectKotobaCloud]] empties the key.
+kotoba.cloud authenticates people with a Passkey in the browser and issues personal API tokens (`kc_pat_<principal>.<tokenId>.<mac>`), either on `kotoba.cloud/account` or to a machine through its device grant (see [[kotoba-cloud-account#Kotoba Cloud account#Device sign-in]]). Either way the desktop's account _is_ the token. [[src/main/kotoba-cloud-account.ts#connectKotobaCloud]] rejects anything that is not a `kc_pat_` token before any network call, proves a token against `GET https://kotoba.cloud/v1/billing/status` (the read-only route that accepts a token bearer), and only then writes `KOTOBA_API_KEY` through `setEnvValue` (which puts it in the keychain store, see [[kotoba-cloud-account#Kotoba Cloud account#Token at rest]]) and mirrors the `kotoba` agent provider. [[src/main/kotoba-cloud-account.ts#kotobaCloudAccount]] re-verifies the stored token on every read so a revoked token shows as "no longer valid" rather than as connected; a token without `billing:read` stays connected with the balance shown as unknown, not as zero. [[src/main/kotoba-cloud-account.ts#disconnectKotobaCloud]] empties the key.
 
 Upstream's Hermes One device login (`hermes-account.ts`, `hermesone-provision.ts`, agent sync) remains in the main process and preload but is no longer reachable from the Providers page.
 
-## Passkey session
+## Device sign-in
 
-The one-click sign-in: a Passkey page in a private cookie partition, then this machine's own token issued from that session.
+The one-click sign-in: RFC 8628 device grant, with the Passkey in the person's own browser — kotoba.cloud's grant has no authority of its own; only a signed-in Passkey session can approve a code.
 
-[[src/main/kotoba-cloud-session.ts#openKotobaCloudSignIn]] hosts `auth.kotoba.cloud/sign-in` in an Electron window whose cookies live in `persist:kotoba-cloud` (the pattern of `remote-oauth.ts`), polls `GET /v1/session` through that partition until the viewer is valid, and rejects when the window is closed or five minutes pass. [[src/main/kotoba-cloud-session.ts#issueDesktopToken]] then issues this machine's personal API token from that session (`POST /v1/account/api-token`, label `Kotoba desktop · <host>`, scopes `inference` + `billing:read` + `agents` + `org:read`, `Origin: https://kotoba.cloud` because the worker's same-origin gate protects a browser's ambient cookies and this partition is reachable by no web page) and hands it to `connectKotobaCloud`. The session is also what the cloud gateway lane uses ([[kotoba-cloud-gateway]]).
+[[src/main/kotoba-cloud-device.ts#startDeviceGrant]] asks `POST https://kotoba.cloud/v1/account/device/code` for a code pair, naming the machine (`Kotoba desktop · <host>`) and the scopes the token will carry ([[src/main/kotoba-cloud-device.ts#DEVICE_SCOPES]]: `inference`, `billing:read`, `agents`, `org:read`, `sandbox` — never `account` or `wallets`). The main process opens `verification_uri_complete` in the default browser and keeps the device code to itself; the modal shows only the user code. [[src/main/kotoba-cloud-device.ts#pollDeviceGrant]] then polls `POST /v1/account/device/token` at the server's interval (`slow_down` adds 5 s), stops on cancel or local expiry, names `access_denied` / `expired_token`, and returns the `access_token` — which goes to `connectKotobaCloud` like a pasted one.
+
+This replaced an Electron window hosting `auth.kotoba.cloud/sign-in` on a private cookie partition: a Passkey inside an app window does not reach the person's platform authenticator (on macOS the iCloud Keychain passkey is offered only to apps with the browser entitlement, and the cross-device QR sheet is Chrome's own UI), so that window opened and never progressed. The partition is still read (`GET /v1/session`) and cleared on sign-out so an old session does not linger.
 
 ## Token at rest
 
@@ -32,13 +34,15 @@ The selection persists per profile in the desktop settings ([[src/main/kotoba-cl
 
 ## Sign-in modal
 
-The dialog the card opens to connect or reconnect: Passkey first, a pasted token as the manual path.
+The dialog the card opens to connect or reconnect: the browser (Passkey) first, a pasted token as the manual path.
 
-[[src/renderer/src/components/KotobaCloudAccountModal.tsx#KotobaCloudAccountModal]] replaces the device-code modal: "Sign in with Passkey" (the window above, then the token is issued and stored without pasting), and below it the manual path — a button that opens `kotoba.cloud/account` in the default browser, a password field for the token, and Connect, which shows the server's refusal by name (`token-revoked`, `sign-in-required`, a scope refusal) and stores nothing on failure.
+[[src/renderer/src/components/KotobaCloudAccountModal.tsx#KotobaCloudAccountModal]] replaces upstream's Hermes One device-code modal with kotoba.cloud's: "Sign in with your browser (Passkey)" starts the device sign-in above, shows the user code with Copy and "Open the browser again", and stores the token once it is approved (closing the dialog cancels the polling); below it the manual path — a button that opens `kotoba.cloud/account` in the default browser, a password field for the token, and Connect, which shows the server's refusal by name (`token-revoked`, `sign-in-required`, a scope refusal) and stores nothing on failure.
 
 ## Tests
 
-Two suites: the account and org module against a scripted `fetch`, and the token store end to end on a real profile tree.
+Three suites: the account and org module against a scripted `fetch`, the device sign-in against a scripted request, and the token store end to end on a real profile tree.
+
+[[src/main/kotoba-cloud-device.test.ts]] pins the scopes asked for (with `sandbox`, without `account`), a refused start named, a non-https approval URL refused, pending → `slow_down` back-off → token, and denial, expiry (server and local clock, the latter without a request) and cancellation each named.
 
 [[src/main/kotoba-cloud-account.test.ts]] drives the module with an in-memory env and a scripted `fetch`: the bearer and route it calls, the balance read from `balances[scope=ai].availableMicroUSD`, 401 refused and nothing stored, 403 kept with the balance unknown, a non-token rejected without a request, and re-verification of a stored token turning `live` off when the server says revoked. It also covers the org switcher: memberships read with the bearer, an empty list distinct from `reconnect` (403), `unavailable` (404) and named errors, unsafe handles dropped, the per-profile selection, `?org=` on the balance read, `org-role-insufficient` kept live, and the manage URL.
 

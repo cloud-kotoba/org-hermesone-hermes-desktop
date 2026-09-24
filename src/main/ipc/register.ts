@@ -117,14 +117,15 @@ import {
   getKotobaOrgSelection,
   setKotobaOrgSelection,
 } from "../kotoba-cloud-orgs";
+import { kotobaCloudViewer, signOutKotobaCloud } from "../kotoba-cloud-session";
 import {
-  issueDesktopToken,
-  kotobaCloudViewer,
-  openKotobaCloudSignIn,
-  signOutKotobaCloud,
-} from "../kotoba-cloud-session";
+  pollDeviceGrant,
+  startDeviceGrant,
+  type DeviceGrant,
+} from "../kotoba-cloud-device";
 import { restartGatewayWhenIdle } from "../gateway-restart-defer";
 import {
+  gatewayRequestAs,
   kotobaGatewayStatus,
   launchKotobaGateway,
   openKotobaGatewayWindow,
@@ -1076,19 +1077,56 @@ export function registerIpcHandlers(context: IpcContext): void {
       disconnectKotobaCloud(profile?.trim() || getActiveProfileNameSync()),
   );
 
-  // Kotoba Cloud sign-in (this fork): the Passkey page in a window on the
-  // desktop's own cookie partition; once the viewer is valid, issue this
-  // machine's personal API token from that session and store it as the
-  // profile's KOTOBA_API_KEY — one click, no token to paste.
-  ipcMain.handle("kotoba-cloud-sign-in", async (_event, profile?: string) => {
-    const target = profile?.trim() || getActiveProfileNameSync();
-    const viewer = await openKotobaCloudSignIn(context.getMainWindow());
-    const issued = await issueDesktopToken();
-    const result = await connectKotobaCloud(issued.token, target);
-    if (result.status === "connected" && isGatewayRunning(target)) {
-      void restartGatewayWhenIdle(target, restartGateway);
-    }
-    return { viewer, tokenId: issued.tokenId, result };
+  // Kotoba Cloud sign-in (this fork): the device grant. `start` asks
+  // kotoba.cloud for a code pair and opens the approval page in the default
+  // browser, where the person signs in with their Passkey and approves the
+  // code; `wait` polls until the scoped token arrives and stores it as the
+  // profile's KOTOBA_API_KEY. The device code stays in this process — the
+  // renderer only ever sees the user code it shows.
+  let pendingDevice: { grant: DeviceGrant; cancelled: boolean } | null = null;
+  ipcMain.handle("kotoba-cloud-device-start", async () => {
+    if (pendingDevice) pendingDevice.cancelled = true;
+    const grant = await startDeviceGrant();
+    pendingDevice = { grant, cancelled: false };
+    await shell.openExternal(grant.verificationUriComplete);
+    return {
+      userCode: grant.userCode,
+      verificationUri: grant.verificationUri,
+      verificationUriComplete: grant.verificationUriComplete,
+      expiresAt: grant.expiresAt,
+    };
+  });
+  ipcMain.handle(
+    "kotoba-cloud-device-wait",
+    async (_event, profile?: string) => {
+      const pending = pendingDevice;
+      if (!pending)
+        return {
+          status: "refused" as const,
+          error: "No sign-in is in progress.",
+        };
+      const target = profile?.trim() || getActiveProfileNameSync();
+      try {
+        const token = await pollDeviceGrant(pending.grant, {
+          cancelled: () => pending.cancelled,
+        });
+        const result = await connectKotobaCloud(token, target);
+        if (result.status === "connected" && isGatewayRunning(target)) {
+          void restartGatewayWhenIdle(target, restartGateway);
+        }
+        return result;
+      } catch (err) {
+        return {
+          status: "refused" as const,
+          error: err instanceof Error ? err.message : String(err),
+        };
+      } finally {
+        if (pendingDevice === pending) pendingDevice = null;
+      }
+    },
+  );
+  ipcMain.handle("kotoba-cloud-device-cancel", () => {
+    if (pendingDevice) pendingDevice.cancelled = true;
   });
   // Organization switcher (this fork): the account's orgs from
   // GET /v1/org/memberships and the persisted billing context. A selection
@@ -1125,9 +1163,18 @@ export function registerIpcHandlers(context: IpcContext): void {
 
   // The gateway kotoba.cloud provides: launch / status / stop the person's
   // hosted Hermes (app.kotoba.cloud /v1/sandbox/session) and open it.
-  ipcMain.handle("kotoba-cloud-gateway-status", () => kotobaGatewayStatus());
-  ipcMain.handle("kotoba-cloud-gateway-launch", () => launchKotobaGateway());
-  ipcMain.handle("kotoba-cloud-gateway-stop", () => stopKotobaGateway());
+  // As the person: the active profile's token as the bearer.
+  const gatewayRequest = (): ReturnType<typeof gatewayRequestAs> =>
+    gatewayRequestAs(kotobaCloudToken(getActiveProfileNameSync()));
+  ipcMain.handle("kotoba-cloud-gateway-status", () =>
+    kotobaGatewayStatus(gatewayRequest()),
+  );
+  ipcMain.handle("kotoba-cloud-gateway-launch", () =>
+    launchKotobaGateway(gatewayRequest()),
+  );
+  ipcMain.handle("kotoba-cloud-gateway-stop", () =>
+    stopKotobaGateway(gatewayRequest()),
+  );
   ipcMain.handle("kotoba-cloud-gateway-open", (_event, url: string) =>
     openKotobaGatewayWindow(String(url), context.getMainWindow()),
   );

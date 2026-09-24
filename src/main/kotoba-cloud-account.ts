@@ -4,10 +4,10 @@
  * Cloud" on the Providers page actually does.
  *
  * kotoba.cloud signs a person in with a Passkey in the browser and issues
- * personal API tokens (`kc_pat_<principal>.<tokenId>.<mac>`) on
- * https://kotoba.cloud/account. There is no device-code / OAuth flow to reuse
- * (the workspace's human-authentication policy makes those non-authorities),
- * so the desktop's account *is* the token: connecting stores it as the
+ * personal API tokens (`kc_pat_<principal>.<tokenId>.<mac>`) — on
+ * https://kotoba.cloud/account, or to this machine through the device grant
+ * the person approves with that Passkey (kotoba-cloud-device.ts). The
+ * desktop's account *is* the token: connecting stores it as the
  * profile's `KOTOBA_API_KEY` — the same variable the Kotoba Cloud provider
  * card and the agent's `providers: kotoba:` entry read — after proving it
  * against `GET /v1/billing/status`, the read-only route that accepts a token

@@ -82,6 +82,18 @@ export interface KotobaCloudViewerInfo {
   principalId?: string | null;
 }
 
+/**
+ * A Kotoba Cloud device sign-in in progress, as the renderer sees it: the
+ * code to show and where the browser was sent. The device code itself stays
+ * in the main process.
+ */
+export interface KotobaDeviceSignIn {
+  userCode: string;
+  verificationUri: string;
+  verificationUriComplete: string;
+  expiresAt: number;
+}
+
 /** The hosted gateway (per-user Hermes in a Modal sandbox) as the lane reports it. */
 export interface KotobaGatewayInfo {
   running: boolean;

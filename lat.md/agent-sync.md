@@ -6,11 +6,11 @@ Phase 1 covers the free parts from the backend's `docs/agent-sync.md`: color, pe
 
 ## The account is the token
 
-kotoba.cloud has no device-code or OAuth flow to reuse — the workspace's human-authentication policy makes those non-authorities — so the desktop's account IS the personal API token it issued from a Passkey session.
+The desktop's account IS the personal API token kotoba.cloud minted for it through the device grant, approved by the person's Passkey in their own browser (the grant is not an authority of its own; see [[kotoba-cloud-account#Kotoba Cloud account#Device sign-in]]).
 
 [[src/main/agent-sync.ts#cloudAccount]] reads it for the DEFAULT profile through [[src/main/kotoba-cloud-account.ts#kotobaCloudToken]] (keychain store, see [[kotoba-cloud-account#Kotoba Cloud account#Token at rest]]): the token is the credential and, through its principal segment ([[src/main/kotoba-cloud-account.ts#kotobaPrincipalId]]), the `accountId` that keeps one machine's links from being applied against somebody else's agents. Sync is device-wide, so reading it per-profile would make "which agents am I backing up" depend on which agent happened to be selected.
 
-The token must carry the `agents` scope; [[src/main/kotoba-cloud-session.ts#issueDesktopToken]] asks for it alongside `inference`, `billing:read` and `org:read`. A token issued before that scope existed is refused by name (`token-scope-insufficient`) rather than failing as an outage.
+The token must carry the `agents` scope; [[src/main/kotoba-cloud-device.ts#DEVICE_SCOPES]] asks for it alongside `inference`, `billing:read`, `org:read` and `sandbox`. A token issued before that scope existed is refused by name (`token-scope-insufficient`) rather than failing as an outage.
 
 Wallets are on this plane too: [[src/main/wallet-sync.ts]] reads `GET /v1/wallets` with the same token, resolved through `cloudAccount()` so the link stamp and the ownership check come from one place.
 

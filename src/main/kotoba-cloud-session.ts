@@ -1,37 +1,22 @@
 // @lat: [[kotoba-cloud-account#Kotoba Cloud account#Passkey session]]
 /**
- * The desktop's own signed-in session with kotoba.cloud.
+ * The desktop's HTTP to kotoba.cloud.
  *
- * kotoba.cloud authenticates a person with a Passkey (or wallet) in a
- * browser page — auth.kotoba.cloud/sign-in — and hands back the same-product
- * `gftd_session` cookie (Domain=kotoba.cloud, HttpOnly). This module hosts
- * that page in an Electron window whose cookies live in a partition the
- * renderer never sees (`persist:kotoba-cloud`, the same pattern as
- * remote-oauth.ts), then speaks to kotoba.cloud from the main process with
- * `useSessionCookies`. The desktop never handles the credential itself; it
- * holds the session the person created, like the browser tab would.
- *
- * With that session it can do what the account console does: read the
- * viewer (`GET /v1/session`), issue this machine's personal API token
- * (`POST /v1/account/api-token`, shown once, stored as KOTOBA_API_KEY by
- * kotoba-cloud-account.ts), and — kotoba-cloud-gateway.ts — launch the
- * person's hosted Hermes gateway.
- *
- * The POSTs carry `Origin: https://kotoba.cloud`: the worker's same-origin
- * gate exists to stop a foreign web page from spending a browser's ambient
- * cookies, and this partition is reachable by no web page at all — the
- * desktop is the person's own agent, the same standing as the console tab.
+ * Sign-in is the device grant (kotoba-cloud-device.ts): the Passkey happens
+ * in the person's own browser and this process ends up holding a scoped
+ * personal API token (KOTOBA_API_KEY, in the OS keychain). Requests that act
+ * as the person carry that token as a `bearer`. The cookie partition below is
+ * what the earlier in-window Passkey sign-in left behind — a Passkey inside
+ * an Electron window never reached the person's platform authenticator, so
+ * that window is gone; the partition is still read (viewer) and cleared
+ * (sign-out) so an old session does not linger.
  */
-import { BrowserWindow, net, session, type Session } from "electron";
-import { hostname } from "os";
+import { net, session, type Session } from "electron";
 
 export const KOTOBA_CLOUD_PARTITION = "persist:kotoba-cloud";
 export const KOTOBA_CLOUD_ORIGIN = "https://kotoba.cloud";
 export const KOTOBA_APP_ORIGIN = "https://app.kotoba.cloud";
 export const KOTOBA_SESSION_COOKIE = "gftd_session";
-export const KOTOBA_SIGN_IN_URL =
-  "https://auth.kotoba.cloud/sign-in?return_to=" +
-  encodeURIComponent(`${KOTOBA_CLOUD_ORIGIN}/account`);
 
 export interface KotobaCloudViewer {
   valid: boolean;
@@ -67,6 +52,8 @@ export function requestKotobaCloudJson(
     method?: "GET" | "POST" | "DELETE";
     body?: unknown;
     origin?: string;
+    /** A `kc_pat_` sent as `Authorization: Bearer` — acting as the person. */
+    bearer?: string | null;
     timeoutMs?: number;
   } = {},
 ): Promise<{ status: number; body: unknown }> {
@@ -80,6 +67,8 @@ export function requestKotobaCloudJson(
     });
     request.setHeader("Accept", "application/json");
     if (options.origin) request.setHeader("Origin", options.origin);
+    if (options.bearer)
+      request.setHeader("Authorization", `Bearer ${options.bearer}`);
     if (options.body !== undefined) {
       request.setHeader("Content-Type", "application/json");
     }
@@ -152,122 +141,4 @@ export async function kotobaCloudViewer(): Promise<KotobaCloudViewer> {
 /** Forget the session: the partition's cookies go, nothing else. */
 export async function signOutKotobaCloud(): Promise<void> {
   await getKotobaCloudSession().clearStorageData({ storages: ["cookies"] });
-}
-
-/**
- * Host the Passkey sign-in page in a window on the partition; resolve once
- * `GET /v1/session` answers a valid viewer, reject when the person closes
- * the window or five minutes pass. Nothing is typed by this process.
- */
-export function openKotobaCloudSignIn(
-  parent?: BrowserWindow | null,
-): Promise<KotobaCloudViewer> {
-  return new Promise((resolve, reject) => {
-    let settled = false;
-    const win = new BrowserWindow({
-      width: 520,
-      height: 760,
-      title: "Sign in to Kotoba Cloud",
-      autoHideMenuBar: true,
-      ...(parent ? { parent, modal: true } : {}),
-      webPreferences: {
-        contextIsolation: true,
-        nodeIntegration: false,
-        sandbox: true,
-        session: getKotobaCloudSession(),
-        webSecurity: true,
-      },
-    });
-    const finish = (error?: Error, viewer?: KotobaCloudViewer): void => {
-      if (settled) return;
-      settled = true;
-      clearInterval(poll);
-      clearTimeout(deadline);
-      if (!win.isDestroyed()) win.destroy();
-      if (error) reject(error);
-      else resolve(viewer as KotobaCloudViewer);
-    };
-    const check = async (): Promise<void> => {
-      if (settled) return;
-      const viewer = await kotobaCloudViewer();
-      if (viewer.valid) finish(undefined, viewer);
-    };
-    const poll = setInterval(() => void check(), 1_500);
-    poll.unref?.();
-    const deadline = setTimeout(
-      () =>
-        finish(
-          new KotobaCloudSessionError(
-            "Kotoba Cloud sign-in did not complete within five minutes.",
-            "sign-in-timeout",
-          ),
-        ),
-      5 * 60_000,
-    );
-    deadline.unref?.();
-    win.webContents.on("did-navigate", () => void check());
-    win.webContents.on("did-redirect-navigation", () => void check());
-    win.on("closed", () => {
-      if (!settled)
-        finish(
-          new KotobaCloudSessionError(
-            "Kotoba Cloud sign-in was cancelled.",
-            "sign-in-cancelled",
-          ),
-        );
-    });
-    void win
-      .loadURL(KOTOBA_SIGN_IN_URL)
-      .catch((error) =>
-        finish(
-          new KotobaCloudSessionError(
-            `Could not open the Kotoba Cloud sign-in page: ${error instanceof Error ? error.message : String(error)}`,
-            "request-failed",
-          ),
-        ),
-      );
-  });
-}
-
-/**
- * Issue this machine's personal API token from the signed-in session — the
- * console's own POST, shown once. `inference` + `billing:read` + `agents` +
- * `org:read` is what the desktop uses (chat, the balance on the account card,
- * backing agents up through /v1/agents, and listing the account's
- * organizations for the billing-context switcher); it never asks for
- * `account`.
- */
-export async function issueDesktopToken(): Promise<{
-  token: string;
-  tokenId: string | null;
-}> {
-  const label = `Kotoba desktop · ${hostname()}`.slice(0, 64);
-  const { status, body } = await requestKotobaCloudJson(
-    `${KOTOBA_CLOUD_ORIGIN}/v1/account/api-token`,
-    {
-      method: "POST",
-      origin: KOTOBA_CLOUD_ORIGIN,
-      body: {
-        label,
-        scopes: ["inference", "billing:read", "agents", "org:read"],
-      },
-    },
-  );
-  const b = (body ?? {}) as Record<string, unknown>;
-  if (status === 401)
-    throw new KotobaCloudSessionError(
-      "Sign in to Kotoba Cloud first.",
-      "sign-in-required",
-      401,
-    );
-  if (status !== 200 || typeof b.token !== "string")
-    throw new KotobaCloudSessionError(
-      `kotoba.cloud refused to issue a token: ${typeof b.error === "string" ? b.error : `HTTP ${status}`}`,
-      typeof b.error === "string" ? b.error : "request-failed",
-      status,
-    );
-  return {
-    token: b.token,
-    tokenId: typeof b.tokenId === "string" ? b.tokenId : null,
-  };
 }

@@ -469,7 +469,8 @@ let lastResult: AgentSyncResult | null = null;
  *
  * There is no separate user record to read: kotoba.cloud signs a person in
  * with a Passkey in the browser and the desktop's account IS the personal
- * API token it issued from that session (kotoba-cloud-account). So the token
+ * API token that sign-in approved for this machine (kotoba-cloud-device,
+ * kotoba-cloud-account). So the token
  * is the credential AND the identity — its principal segment is the
  * `accountId` that keeps one machine's links from being applied against
  * somebody else's agents.

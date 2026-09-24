@@ -33,6 +33,7 @@ import type {
   KotobaCloudAccount,
   KotobaCloudConnectResult,
   KotobaCloudViewerInfo,
+  KotobaDeviceSignIn,
   KotobaOrgState,
   KotobaGatewayInfo,
 } from "../shared/account";
@@ -303,14 +304,16 @@ const hermesAPI = {
     ipcRenderer.invoke("kotoba-cloud-account-connect", token, profile),
   disconnectKotobaCloud: (profile?: string): Promise<{ success: boolean }> =>
     ipcRenderer.invoke("kotoba-cloud-account-disconnect", profile),
-  // Passkey sign-in in a window + one-click token issuance (this fork)
-  signInKotobaCloud: (
+  // Device-grant sign-in (this fork): the Passkey happens in the default
+  // browser; the main process holds the device code and polls for the token
+  startKotobaDeviceSignIn: (): Promise<KotobaDeviceSignIn> =>
+    ipcRenderer.invoke("kotoba-cloud-device-start"),
+  waitKotobaDeviceSignIn: (
     profile?: string,
-  ): Promise<{
-    viewer: KotobaCloudViewerInfo;
-    tokenId: string | null;
-    result: KotobaCloudConnectResult;
-  }> => ipcRenderer.invoke("kotoba-cloud-sign-in", profile),
+  ): Promise<KotobaCloudConnectResult> =>
+    ipcRenderer.invoke("kotoba-cloud-device-wait", profile),
+  cancelKotobaDeviceSignIn: (): Promise<void> =>
+    ipcRenderer.invoke("kotoba-cloud-device-cancel"),
   getKotobaCloudViewer: (): Promise<KotobaCloudViewerInfo> =>
     ipcRenderer.invoke("kotoba-cloud-viewer"),
   // Organization switcher: memberships + the persisted billing context
