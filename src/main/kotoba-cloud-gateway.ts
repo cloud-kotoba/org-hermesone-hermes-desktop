@@ -8,8 +8,9 @@
  * tunnel URL carrying a signed, expiring `?hs=` handoff that the in-sandbox
  * gate validates. Sessions live at most 3 h.
  *
- * This module drives that lane with the desktop's Kotoba Cloud session
- * (kotoba-cloud-session.ts) and opens the returned dashboard in a window on
+ * This module drives that lane as the person — the profile's personal API
+ * token as a bearer (the device grant mints it with the `sandbox` scope;
+ * `gatewayRequestAs`) — and opens the returned dashboard in a window on
  * its own partition: the stock Hermes web UI, same-origin against the
  * sandbox, so chat, PTY and WebSockets all just work. It does NOT retarget
  * the desktop's native chat transport at the sandbox — the sandbox's gate
@@ -49,6 +50,16 @@ export interface KotobaGatewayStatus {
 }
 
 type Fetcher = typeof requestKotobaCloudJson;
+
+/**
+ * The lane's requests carrying `token` as the bearer. Without one they go
+ * out with only the partition's cookie, which the server answers 401 →
+ * `signed-out` unless an older in-window session is still there.
+ */
+export function gatewayRequestAs(token: string | null): Fetcher {
+  return (url, options = {}) =>
+    requestKotobaCloudJson(url, { ...options, bearer: token });
+}
 
 function fold(
   status: number,

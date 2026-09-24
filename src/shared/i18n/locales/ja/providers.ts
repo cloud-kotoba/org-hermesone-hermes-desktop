@@ -33,11 +33,16 @@ export default {
     manage: "kotoba.cloud で管理",
     modalTitle: "Kotoba Cloud にサインイン",
     modalHint:
-      "1. kotoba.cloud/account を開き Passkey でサインイン。 2. personal API token（kc_pat_…）を発行。 3. 下に貼り付け — 保存前に Kotoba Cloud に照会して確かめます。",
-    passkey: "Passkey でサインイン",
+      "kotoba.cloud で使っている Passkey で、いつものブラウザからサインインします。kotoba.cloud/account で発行した personal API token（kc_pat_…）を貼り付けることもできます — 保存前に Kotoba Cloud に照会して確かめます。",
+    passkey: "ブラウザでサインイン（Passkey）",
     passkeyHint:
-      "kotoba.cloud のサインイン画面をウィンドウで開きます。サインインできると、このアプリがそのセッションから自分用の personal API token を発行して保存します — 貼り付けは不要です。",
-    passkeyWorking: "サインインのウィンドウを待っています…",
+      "既定のブラウザで kotoba.cloud を開きます。そこで Passkey でサインインし、この画面のコードを承認すると、このアプリ専用のトークン（チャット・残高・エージェント・組織・ホストされた Hermes）が届きます — 貼り付けは不要です。",
+    passkeyWorking: "ブラウザでの承認を待っています…",
+    deviceHint:
+      "開いたブラウザでこのコードを承認してください（求められたら先に Passkey でサインイン）。ブラウザ側のコードがこの画面と同じか確かめてください。",
+    copyCode: "コードをコピー",
+    copied: "コピーしました",
+    reopenBrowser: "ブラウザをもう一度開く",
     orPaste: "または自分で発行したトークンを貼り付け",
     openAccount: "kotoba.cloud/account を開く",
     tokenLabel: "Personal API token",

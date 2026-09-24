@@ -84,11 +84,16 @@ export default {
     manage: "Manage on kotoba.cloud",
     modalTitle: "Sign in to Kotoba Cloud",
     modalHint:
-      "1. Open kotoba.cloud/account and sign in with your Passkey.  2. Issue a personal API token (kc_pat_…).  3. Paste it below — it is checked with Kotoba Cloud before it is saved.",
-    passkey: "Sign in with Passkey",
+      "Sign in with the Passkey you already use for kotoba.cloud — in your own browser. Or paste a personal API token (kc_pat_…) issued on kotoba.cloud/account; it is checked with Kotoba Cloud before it is saved.",
+    passkey: "Sign in with your browser (Passkey)",
     passkeyHint:
-      "Opens kotoba.cloud's sign-in in a window. Once you are signed in, this app issues its own personal API token from that session and saves it here — nothing to paste.",
-    passkeyWorking: "Waiting for the sign-in window…",
+      "Opens kotoba.cloud in your default browser. Sign in there with your Passkey and approve the code this window shows; this app then receives its own token (chat, balance, agents, orgs, hosted Hermes) — nothing to paste.",
+    passkeyWorking: "Waiting for approval in the browser…",
+    deviceHint:
+      "Approve this code in the browser that just opened (sign in with your Passkey first if asked). Check that the code there matches this one.",
+    copyCode: "Copy code",
+    copied: "Copied",
+    reopenBrowser: "Open the browser again",
     orPaste: "or paste a token you issued yourself",
     openAccount: "Open kotoba.cloud/account",
     tokenLabel: "Personal API token",

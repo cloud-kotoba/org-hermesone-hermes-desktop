@@ -22,6 +22,7 @@ import type {
   KotobaCloudAccount,
   KotobaCloudConnectResult,
   KotobaCloudViewerInfo,
+  KotobaDeviceSignIn,
   KotobaOrgState,
   KotobaGatewayInfo,
 } from "../shared/account";
@@ -339,11 +340,11 @@ interface HermesAPI {
     profile?: string,
   ) => Promise<KotobaCloudConnectResult>;
   disconnectKotobaCloud: (profile?: string) => Promise<{ success: boolean }>;
-  signInKotobaCloud: (profile?: string) => Promise<{
-    viewer: KotobaCloudViewerInfo;
-    tokenId: string | null;
-    result: KotobaCloudConnectResult;
-  }>;
+  startKotobaDeviceSignIn: () => Promise<KotobaDeviceSignIn>;
+  waitKotobaDeviceSignIn: (
+    profile?: string,
+  ) => Promise<KotobaCloudConnectResult>;
+  cancelKotobaDeviceSignIn: () => Promise<void>;
   getKotobaCloudViewer: () => Promise<KotobaCloudViewerInfo>;
   getKotobaOrgs: (profile?: string) => Promise<KotobaOrgState>;
   selectKotobaOrg: (
