@@ -50,6 +50,7 @@ import {
   mediaFileExists,
 } from "../media";
 import { openTerminalInDirectory } from "../terminal-launcher";
+import { getServiceSupervisor } from "../service-supervisor";
 import {
   getGpuStatus,
   reenableGpuAndRelaunch,
@@ -795,6 +796,19 @@ export function registerIpcHandlers(context: IpcContext): void {
 
   // GPU fallback visibility: lets the Office tab explain SwiftShader slowness
   // and offer a one-click recovery instead of silently rendering 3D on the CPU.
+  // Supervised long-running services (service-supervisor.ts). The label is
+  // validated against the supervisor's own table; unknown labels are refused.
+  ipcMain.handle("services-list", () => getServiceSupervisor()?.list() ?? []);
+  ipcMain.handle("services-restart", (_e, label: unknown) =>
+    typeof label === "string"
+      ? (getServiceSupervisor()?.restart(label) ?? false)
+      : false,
+  );
+  ipcMain.handle("services-stop", (_e, label: unknown) =>
+    typeof label === "string"
+      ? (getServiceSupervisor()?.stop(label) ?? false)
+      : false,
+  );
   ipcMain.handle("get-gpu-status", () => getGpuStatus());
   ipcMain.handle("reenable-gpu", () => reenableGpuAndRelaunch());
   // Settings → Appearance hardware-acceleration preference. Validated here

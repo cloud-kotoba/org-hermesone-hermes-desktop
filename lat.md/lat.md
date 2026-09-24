@@ -20,6 +20,7 @@ This directory defines the high-level concepts, business logic, and architecture
 - [[sidebar-navigation]] — the recent-sessions list under the Chat nav item, capped at five with a "Show more" button that opens the full session list in a modal.
 - [[context-folder]] — the per-session linked working folder, persisted in a desktop-owned state.db table so a re-opened conversation restores its folder.
 - [[main-process]] — the Electron main-process entrypoint, app lifecycle modules, and centralized IPC registry.
+- [[service-supervisor]] — Kotoba Desktop as the supervisor of long-running services (former launchd KeepAlive agents): detached spawn, pid-file adoption, throttle + crash-loop backoff, and the launchd double-run guard.
 - [[remote-dashboard-oauth]] — direct Remote dashboard browser authentication, main-process cookie isolation, and single-use WebSocket ticket handling.
 - [[onboarding]] — the shared cinematic first-run chrome (OnboardHero): aurora backdrop, animated Hermes emblem with the big-centre → fly-up intro, and the Welcome / Install redesign built on it.
 - [[provider-setup]] — the first-run provider picker; its top grid mirrors the agent's native `CANONICAL_PROVIDERS` while OpenAI-compatible endpoints route through the Local presets.
