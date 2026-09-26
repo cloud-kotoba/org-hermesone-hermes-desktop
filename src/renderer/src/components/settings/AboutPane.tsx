@@ -13,7 +13,7 @@ import {
 import { useI18n } from "../useI18n";
 import BrandLogo from "../common/BrandLogo";
 import { Toggle } from "../common/Toggle";
-import hermesIcon from "../../assets/kotoba-mark.svg";
+import hermesIcon from "../../assets/mithril-mark.svg";
 import pythonLogo from "../../assets/logos/python.svg";
 import openaiLogo from "../../assets/logos/openai.svg";
 import { ConfigHealth } from "../../screens/Settings/ConfigHealth";

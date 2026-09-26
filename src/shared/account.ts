@@ -26,11 +26,11 @@ export interface HermesOneCreditsResult {
   error?: string;
 }
 
-/** This fork's Kotoba Cloud account: the stored personal API token, proven
- *  against kotoba.cloud. `live` false = the stored token no longer verifies
+/** This fork's Mithril account: the stored personal API token, proven
+ *  against mithril.fund. `live` false = the stored token no longer verifies
  *  (revoked / unreachable — `error` says which). `balance` is ai credit in
  *  USD, null when the token lacks billing:read (`error` names the scope). */
-export interface KotobaCloudAccount {
+export interface MithrilAccount {
   tokenId: string | null;
   accountUrl: string;
   live: boolean;
@@ -43,12 +43,12 @@ export interface KotobaCloudAccount {
   /** The billing context `balance` belongs to: null = personal, else the
    *  selected organization's handle. */
   org?: string | null;
-  /** kotoba.cloud page to manage the selected context. */
+  /** mithril.fund page to manage the selected context. */
   manageUrl?: string;
 }
 
 /** One organization the signed-in person belongs to (`GET /v1/org/memberships`). */
-export interface KotobaOrgMembership {
+export interface MithrilOrgMembership {
   handle: string;
   did: string;
   role: string;
@@ -64,30 +64,30 @@ export interface KotobaOrgMembership {
  * route is not deployed (404); `signed-out` — no token; `error` — anything
  * else (network, 5xx, revoked).
  */
-export type KotobaOrgMemberships =
-  | { status: "ok"; orgs: KotobaOrgMembership[] }
+export type MithrilOrgMemberships =
+  | { status: "ok"; orgs: MithrilOrgMembership[] }
   | { status: "reconnect" | "unavailable" | "signed-out" }
   | { status: "error"; error: string };
 
-export interface KotobaOrgState {
-  memberships: KotobaOrgMemberships;
+export interface MithrilOrgState {
+  memberships: MithrilOrgMemberships;
   /** The persisted selection: null = Personal. */
   selected: string | null;
 }
 
-/** The desktop's signed-in Kotoba Cloud session (Passkey in a window). */
-export interface KotobaCloudViewerInfo {
+/** The desktop's signed-in Mithril session (Passkey in a window). */
+export interface MithrilViewerInfo {
   valid: boolean;
   username?: string | null;
   principalId?: string | null;
 }
 
 /**
- * A Kotoba Cloud device sign-in in progress, as the renderer sees it: the
+ * A Mithril device sign-in in progress, as the renderer sees it: the
  * code to show and where the browser was sent. The device code itself stays
  * in the main process.
  */
-export interface KotobaDeviceSignIn {
+export interface MithrilDeviceSignIn {
   userCode: string;
   verificationUri: string;
   verificationUriComplete: string;
@@ -95,7 +95,7 @@ export interface KotobaDeviceSignIn {
 }
 
 /** The hosted gateway (per-user Hermes in a Modal sandbox) as the lane reports it. */
-export interface KotobaGatewayInfo {
+export interface MithrilGatewayInfo {
   running: boolean;
   status: string;
   url: string | null;
@@ -103,8 +103,8 @@ export interface KotobaGatewayInfo {
   error?: string;
 }
 
-export type KotobaCloudConnectResult =
-  | { status: "connected"; account: KotobaCloudAccount }
+export type MithrilConnectResult =
+  | { status: "connected"; account: MithrilAccount }
   | { status: "invalid" | "refused"; error: string };
 
 /** Emitted once the backend issues a device code, so the modal can show it. */

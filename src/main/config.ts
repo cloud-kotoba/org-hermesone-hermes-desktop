@@ -11,12 +11,12 @@ import {
 } from "./utils";
 import { getYamlPath } from "./yaml-path";
 import {
-  clearStoredKotobaToken,
-  hasStoredKotobaToken,
-  kotobaSecureStorageAvailable,
-  readStoredKotobaToken,
-  writeStoredKotobaToken,
-} from "./kotoba-cloud-token-store";
+  clearStoredMithrilToken,
+  hasStoredMithrilToken,
+  mithrilSecureStorageAvailable,
+  readStoredMithrilToken,
+  writeStoredMithrilToken,
+} from "./mithril-token-store";
 // NOTE: ./secrets imports back into this module (getConfigValue / readEnv), so
 // this is a static import that closes a cycle (config -> secrets ->
 // commandProvider -> config). It is safe ONLY because BOTH sides defer all work
@@ -523,14 +523,14 @@ export function invalidateSecretsCache(): void {
 }
 
 /**
- * The Kotoba Cloud token's env name. Its value does not live in `.env` when
+ * The Mithril token's env name. Its value does not live in `.env` when
  * the OS keychain is available: `readEnv` overlays it from the encrypted
- * store (kotoba-cloud-token-store.ts) and `setEnvValue` writes it there, so
+ * store (mithril-token-store.ts) and `setEnvValue` writes it there, so
  * every reader of the profile env — the provider cards, config-health, and
  * each agent spawn that copies `readEnv` into the child env — sees it without
  * a plaintext copy on disk.
  */
-export const KOTOBA_SECURE_ENV_KEY = "KOTOBA_API_KEY";
+export const MITHRIL_SECURE_ENV_KEY = "KOTOBA_API_KEY";
 
 export function readEnv(profile?: string): Record<string, string> {
   const cacheKey = `env:${profile || "default"}`;
@@ -541,9 +541,9 @@ export function readEnv(profile?: string): Record<string, string> {
   // A plaintext `.env` value wins (the keychain was unavailable when it was
   // written, or something outside the desktop wrote it — startup migration
   // moves it); otherwise the encrypted store supplies the key.
-  if (!(result[KOTOBA_SECURE_ENV_KEY] || "").trim()) {
-    const stored = readStoredKotobaToken(profile);
-    if (stored) result[KOTOBA_SECURE_ENV_KEY] = stored;
+  if (!(result[MITHRIL_SECURE_ENV_KEY] || "").trim()) {
+    const stored = readStoredMithrilToken(profile);
+    if (stored) result[MITHRIL_SECURE_ENV_KEY] = stored;
   }
 
   setCache(cacheKey, result);
@@ -559,13 +559,13 @@ export function readEnv(profile?: string): Record<string, string> {
  */
 export function secureSpawnEnv(profile?: string): Record<string, string> {
   try {
-    const value = (readEnv(profile)[KOTOBA_SECURE_ENV_KEY] || "").trim();
-    return value ? { [KOTOBA_SECURE_ENV_KEY]: value } : {};
+    const value = (readEnv(profile)[MITHRIL_SECURE_ENV_KEY] || "").trim();
+    return value ? { [MITHRIL_SECURE_ENV_KEY]: value } : {};
   } catch (err) {
     // A spawn must not fail on this lookup; the agent then reports the
-    // missing key by name when it first needs Kotoba Cloud.
+    // missing key by name when it first needs Mithril.
     console.warn(
-      `[kotoba-cloud] could not resolve ${KOTOBA_SECURE_ENV_KEY} for the spawn env: ${(err as Error).message}`,
+      `[mithril] could not resolve ${MITHRIL_SECURE_ENV_KEY} for the spawn env: ${(err as Error).message}`,
     );
     return {};
   }
@@ -640,33 +640,33 @@ function setSecureEnvValue(value: string, profile?: string): void {
   const token = value.trim();
   invalidateCache(`env:${profile || "default"}`);
   if (!token) {
-    clearStoredKotobaToken(profile);
-    removeEnvKey(KOTOBA_SECURE_ENV_KEY, profile);
+    clearStoredMithrilToken(profile);
+    removeEnvKey(MITHRIL_SECURE_ENV_KEY, profile);
     setSecureEnvWarning(profile, undefined);
     return;
   }
-  if (kotobaSecureStorageAvailable()) {
+  if (mithrilSecureStorageAvailable()) {
     try {
-      writeStoredKotobaToken(profile, token);
-      removeEnvKey(KOTOBA_SECURE_ENV_KEY, profile);
+      writeStoredMithrilToken(profile, token);
+      removeEnvKey(MITHRIL_SECURE_ENV_KEY, profile);
       setSecureEnvWarning(profile, undefined);
       return;
     } catch (err) {
       console.warn(
-        `[kotoba-cloud] keychain write failed, keeping the token in .env: ${(err as Error).message}`,
+        `[mithril] keychain write failed, keeping the token in .env: ${(err as Error).message}`,
       );
     }
   }
   // Plaintext fallback. A stale encrypted copy would shadow nothing (the
   // .env value wins in readEnv) but would resurrect an old token after a
   // later disconnect — remove it.
-  if (hasStoredKotobaToken(profile)) clearStoredKotobaToken(profile);
-  setSecureEnvWarning(profile, KOTOBA_PLAINTEXT_WARNING);
-  writeEnvLine(KOTOBA_SECURE_ENV_KEY, token, profile);
+  if (hasStoredMithrilToken(profile)) clearStoredMithrilToken(profile);
+  setSecureEnvWarning(profile, MITHRIL_PLAINTEXT_WARNING);
+  writeEnvLine(MITHRIL_SECURE_ENV_KEY, token, profile);
 }
 
-export const KOTOBA_PLAINTEXT_WARNING =
-  "The OS keychain is unavailable, so the Kotoba Cloud token is stored in plaintext in this profile's .env.";
+export const MITHRIL_PLAINTEXT_WARNING =
+  "The OS keychain is unavailable, so the Mithril token is stored in plaintext in this profile's .env.";
 
 export function setEnvValue(
   key: string,
@@ -674,7 +674,7 @@ export function setEnvValue(
   profile?: string,
 ): void {
   validateEnvEntry(key, value);
-  if (key === KOTOBA_SECURE_ENV_KEY) {
+  if (key === MITHRIL_SECURE_ENV_KEY) {
     setSecureEnvValue(value, profile);
     return;
   }

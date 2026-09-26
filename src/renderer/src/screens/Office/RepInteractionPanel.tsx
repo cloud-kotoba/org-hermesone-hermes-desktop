@@ -45,7 +45,7 @@ function formatAmount(value: number): string {
 }
 
 function formatUsd(value: number | null | undefined): string {
-  // An em dash, not "$0.00": Kotoba Cloud's wallet plane reads balances with
+  // An em dash, not "$0.00": Mithril's wallet plane reads balances with
   // no price oracle, and a zero here would say "worth nothing" about money
   // that is merely unpriced.
   if (value === null || value === undefined) return "—";

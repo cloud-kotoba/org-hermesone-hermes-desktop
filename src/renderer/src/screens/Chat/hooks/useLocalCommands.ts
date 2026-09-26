@@ -119,7 +119,7 @@ export function useLocalCommands({
             window.hermesAPI.getAppVersion(),
           ]);
           addAgentMessage(
-            `**Hermes Agent:** ${hermesVer || "unknown"}\n**Kotoba:** v${appVer}`,
+            `**Hermes Agent:** ${hermesVer || "unknown"}\n**Mithril:** v${appVer}`,
           );
           return true;
         }

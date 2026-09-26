@@ -12,13 +12,13 @@ import { join } from "path";
 const profileHomeRef = vi.hoisted(() => ({ value: "C:/hermes" }));
 const keychainToken = vi.hoisted(() => ({ value: null as string | null }));
 
-// The Kotoba Cloud token lives in the keychain store, not in .env.
-vi.mock("../src/main/kotoba-cloud-token-store", () => ({
-  readStoredKotobaToken: () => keychainToken.value,
-  hasStoredKotobaToken: () => keychainToken.value !== null,
-  kotobaSecureStorageAvailable: () => true,
-  writeStoredKotobaToken: () => {},
-  clearStoredKotobaToken: () => {},
+// The Mithril token lives in the keychain store, not in .env.
+vi.mock("../src/main/mithril-token-store", () => ({
+  readStoredMithrilToken: () => keychainToken.value,
+  hasStoredMithrilToken: () => keychainToken.value !== null,
+  mithrilSecureStorageAvailable: () => true,
+  writeStoredMithrilToken: () => {},
+  clearStoredMithrilToken: () => {},
 }));
 
 const { execFileSpy } = vi.hoisted(() => ({
@@ -91,7 +91,7 @@ describe("createCronJob", () => {
     // the first test pays the cold import of the config graph
   }, 20_000);
 
-  // @lat: [[kotoba-cloud-account#Kotoba Cloud account#Tests]]
+  // @lat: [[mithril-account#Mithril account#Tests]]
   it("injects the keychain-held KOTOBA_API_KEY into the cron child env", async () => {
     keychainToken.value = "kc_pat_p.d5cc449fa4d5.mac";
     try {

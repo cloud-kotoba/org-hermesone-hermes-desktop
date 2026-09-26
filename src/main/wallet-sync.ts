@@ -118,7 +118,7 @@ export async function syncWalletsForProfile(
 
   try {
     const res = await fetch(
-      // Kotoba Cloud's wallets belong to the ACCOUNT, not to one agent: the
+      // Mithril's wallets belong to the ACCOUNT, not to one agent: the
       // plane registers addresses a person controls, and an address is not a
       // property of whichever profile happens to be selected.
       `${apiUrl}/v1/wallets`,

@@ -54,8 +54,8 @@ const DASHBOARD_SPA_MOUNT_ANCHOR = "mount_spa(app)";
 const MODEL_LIBRARY_COMPAT_SOURCE = `
 
 # --- HERMES_ONE_MODEL_LIBRARY_COMPAT_V1 -------------------------------------
-# Compatibility endpoint installed by Kotoba. Upstream Hermes Agent exposes
-# /api/model/options and /api/model/set, but Kotoba also needs a small
+# Compatibility endpoint installed by Mithril. Upstream Hermes Agent exposes
+# /api/model/options and /api/model/set, but Mithril also needs a small
 # configured-model shortcut library for remote/SSH model pickers. The library is
 # deliberately stored in this agent's HERMES_HOME so remote shortcuts stay on
 # the remote host and survive desktop restarts without changing upstream model
@@ -391,7 +391,7 @@ export function patchDashboardModelLibrarySource(
       compatible: true,
       changed: false,
       source,
-      detail: "Kotoba model library endpoint is already installed.",
+      detail: "Mithril model library endpoint is already installed.",
     };
   }
 
@@ -400,8 +400,8 @@ export function patchDashboardModelLibrarySource(
     changed: true,
     source: patched,
     detail: withoutExisting.removed
-      ? "Moved Kotoba model library endpoint before the dashboard catch-all route."
-      : "Installed Kotoba model library endpoint.",
+      ? "Moved Mithril model library endpoint before the dashboard catch-all route."
+      : "Installed Mithril model library endpoint.",
   };
 }
 
@@ -626,11 +626,11 @@ if compatible:
         if source != original_source:
             changed = True
             if removed_model_library:
-                details.append("Moved Kotoba model library endpoint before the dashboard catch-all route.")
+                details.append("Moved Mithril model library endpoint before the dashboard catch-all route.")
             else:
-                details.append("Installed Kotoba model library endpoint.")
+                details.append("Installed Mithril model library endpoint.")
         else:
-            details.append("Kotoba model library endpoint is already installed.")
+            details.append("Mithril model library endpoint is already installed.")
     else:
         compatible = False
         details.append("Could not find Hermes Agent model REST endpoints in web_server.py.")
@@ -701,6 +701,6 @@ export function remoteHttpCompatibilityResult(): HermesAgentCompatResult {
     applied: false,
     version: HERMES_AGENT_COMPAT_VERSION,
     detail:
-      "Plain remote HTTP can be probed but not patched by Kotoba. Use SSH mode for deployable compatibility fixes or update the remote Hermes Agent directly.",
+      "Plain remote HTTP can be probed but not patched by Mithril. Use SSH mode for deployable compatibility fixes or update the remote Hermes Agent directly.",
   };
 }
