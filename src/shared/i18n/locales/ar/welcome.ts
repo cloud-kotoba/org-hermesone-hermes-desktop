@@ -1,5 +1,5 @@
 export default {
-  title: "مرحباً بك في Kotoba",
+  title: "مرحباً بك في Mithril",
   subtitle:
     "مساعد الذكاء الاصطناعي المتطور الذي يعمل محلياً على جهازك. خاص، قوي، ويتعلم دائماً.",
   installIssueTitle: "مشكلة في التثبيت",

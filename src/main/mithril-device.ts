@@ -1,6 +1,6 @@
-// @lat: [[kotoba-cloud-account#Kotoba Cloud account#Device sign-in]]
+// @lat: [[mithril-account#Mithril account#Device sign-in]]
 /**
- * Kotoba Cloud sign-in by the device grant (RFC 8628) — the Passkey happens in
+ * Mithril sign-in by the device grant (RFC 8628) — the Passkey happens in
  * the person's own browser, not in an Electron window.
  *
  * Why not a window: a Passkey inside an Electron BrowserWindow does not reach
@@ -10,7 +10,7 @@
  * then never progressed. The device grant moves the whole ceremony to the
  * default browser:
  *
- *   1. POST kotoba.cloud/v1/account/device/code {device_name, scope}
+ *   1. POST mithril.fund/v1/account/device/code {device_name, scope}
  *      → device_code (this process only), user_code, verification_uri_complete
  *   2. the browser opens verification_uri_complete; the person signs in with
  *      their Passkey there and approves THIS code (the screen shows the
@@ -24,10 +24,10 @@
  */
 import { hostname } from "os";
 import {
-  KOTOBA_CLOUD_ORIGIN,
-  KotobaCloudSessionError,
-  requestKotobaCloudJson,
-} from "./kotoba-cloud-session";
+  MITHRIL_ORIGIN,
+  MithrilSessionError,
+  requestMithrilJson,
+} from "./mithril-session";
 
 /**
  * What the desktop's token may do: chat, the balance on the account card,
@@ -42,8 +42,8 @@ export const DEVICE_SCOPES = [
   "sandbox",
 ] as const;
 
-const CODE_URL = `${KOTOBA_CLOUD_ORIGIN}/v1/account/device/code`;
-const TOKEN_URL = `${KOTOBA_CLOUD_ORIGIN}/v1/account/device/token`;
+const CODE_URL = `${MITHRIL_ORIGIN}/v1/account/device/code`;
+const TOKEN_URL = `${MITHRIL_ORIGIN}/v1/account/device/token`;
 
 export interface DeviceGrant {
   deviceCode: string;
@@ -56,7 +56,7 @@ export interface DeviceGrant {
   expiresAt: number;
 }
 
-type Fetcher = typeof requestKotobaCloudJson;
+type Fetcher = typeof requestMithrilJson;
 
 function str(x: unknown): string | null {
   return typeof x === "string" && x.length > 0 ? x : null;
@@ -64,13 +64,13 @@ function str(x: unknown): string | null {
 
 /** Step 1: ask for a code pair. Refusals are thrown by name. */
 export async function startDeviceGrant(
-  request: Fetcher = requestKotobaCloudJson,
+  request: Fetcher = requestMithrilJson,
   now: () => number = Date.now,
 ): Promise<DeviceGrant> {
   const { status, body } = await request(CODE_URL, {
     method: "POST",
     body: {
-      device_name: `Kotoba desktop · ${hostname()}`.slice(0, 64),
+      device_name: `Mithril desktop · ${hostname()}`.slice(0, 64),
       scope: DEVICE_SCOPES.join(" "),
     },
   });
@@ -81,15 +81,15 @@ export async function startDeviceGrant(
   const complete = str(b.verification_uri_complete);
   if (status !== 200 || !deviceCode || !userCode || !uri || !complete) {
     const error = str(b.error) ?? `HTTP ${status}`;
-    throw new KotobaCloudSessionError(
-      `kotoba.cloud did not start a device sign-in: ${error}`,
+    throw new MithrilSessionError(
+      `mithril.fund did not start a device sign-in: ${error}`,
       error,
       status,
     );
   }
-  // only ever send the person to kotoba.cloud's own approval screen
+  // only ever send the person to mithril.fund's own approval screen
   if (new URL(complete).protocol !== "https:") {
-    throw new KotobaCloudSessionError(
+    throw new MithrilSessionError(
       `The approval URL must be https: ${complete}`,
       "request-failed",
     );
@@ -122,7 +122,7 @@ export async function pollDeviceGrant(
     cancelled?: () => boolean;
   } = {},
 ): Promise<string> {
-  const request = opts.request ?? requestKotobaCloudJson;
+  const request = opts.request ?? requestMithrilJson;
   const sleep =
     opts.sleep ?? ((ms: number) => new Promise((r) => setTimeout(r, ms)));
   const now = opts.now ?? Date.now;
@@ -131,12 +131,12 @@ export async function pollDeviceGrant(
   while (true) {
     await sleep(interval * 1000);
     if (cancelled())
-      throw new KotobaCloudSessionError(
-        "Kotoba Cloud sign-in was cancelled.",
+      throw new MithrilSessionError(
+        "Mithril sign-in was cancelled.",
         "sign-in-cancelled",
       );
     if (now() >= grant.expiresAt)
-      throw new KotobaCloudSessionError(
+      throw new MithrilSessionError(
         "The sign-in code expired before it was approved. Start again.",
         "expired_token",
       );
@@ -154,19 +154,19 @@ export async function pollDeviceGrant(
       continue;
     }
     if (error === "access_denied")
-      throw new KotobaCloudSessionError(
+      throw new MithrilSessionError(
         "The sign-in was denied in the browser.",
         "access_denied",
         status,
       );
     if (error === "expired_token")
-      throw new KotobaCloudSessionError(
+      throw new MithrilSessionError(
         "The sign-in code expired before it was approved. Start again.",
         "expired_token",
         status,
       );
-    throw new KotobaCloudSessionError(
-      `kotoba.cloud could not finish the sign-in: ${error}`,
+    throw new MithrilSessionError(
+      `mithril.fund could not finish the sign-in: ${error}`,
       error,
       status,
     );

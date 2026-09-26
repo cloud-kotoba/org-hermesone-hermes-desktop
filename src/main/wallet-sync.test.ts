@@ -156,7 +156,7 @@ describe("syncWalletsForProfile", () => {
     expect(result.status).toBe("ok");
     // The addressless row is dropped.
     expect(result.wallets.map((w) => w.id)).toEqual(["wal-1"]);
-    // Kotoba Cloud's wallets belong to the ACCOUNT: the request carries no
+    // Mithril's wallets belong to the ACCOUNT: the request carries no
     // agent id, because an address is not a property of one profile
     expect(calls[0]).toBe("http://localhost:3002/v1/wallets");
     expect(mockState.syncAgentsCalls).toBe(0);
@@ -172,7 +172,7 @@ describe("syncWalletsForProfile", () => {
     const result = await syncWalletsForProfile("default");
     expect(mockState.syncAgentsCalls).toBe(1);
     expect(result.status).toBe("ok");
-    // Kotoba Cloud's wallets belong to the ACCOUNT: the request carries no
+    // Mithril's wallets belong to the ACCOUNT: the request carries no
     // agent id, because an address is not a property of one profile
     expect(calls[0]).toBe("http://localhost:3002/v1/wallets");
   });
@@ -228,7 +228,7 @@ describe("syncWalletsForProfile", () => {
     const result = await syncWalletsForProfile("default");
     expect(mockState.syncAgentsCalls).toBe(1);
     expect(result.status).toBe("ok");
-    // Kotoba Cloud's wallets belong to the ACCOUNT: the request carries no
+    // Mithril's wallets belong to the ACCOUNT: the request carries no
     // agent id, because an address is not a property of one profile
     expect(calls[0]).toBe("http://localhost:3002/v1/wallets");
   });

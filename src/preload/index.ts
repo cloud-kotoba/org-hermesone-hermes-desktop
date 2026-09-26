@@ -30,12 +30,12 @@ import type {
   HermesAccount,
   HermesAccountUser,
   HermesOneCreditsResult,
-  KotobaCloudAccount,
-  KotobaCloudConnectResult,
-  KotobaCloudViewerInfo,
-  KotobaDeviceSignIn,
-  KotobaOrgState,
-  KotobaGatewayInfo,
+  MithrilAccount,
+  MithrilConnectResult,
+  MithrilViewerInfo,
+  MithrilDeviceSignIn,
+  MithrilOrgState,
+  MithrilGatewayInfo,
 } from "../shared/account";
 import type { AgentSyncResult, AgentSyncStatus } from "../shared/agent-sync";
 import type { GpuPreferenceMode, GpuStatus } from "../shared/gpu";
@@ -291,50 +291,45 @@ const hermesAPI = {
   getHermesOneCredits: (): Promise<HermesOneCreditsResult> =>
     ipcRenderer.invoke("hermesone-credits"),
 
-  // Kotoba Cloud account (this fork): the profile's personal API token,
-  // verified against kotoba.cloud on connect and on every read.
-  getKotobaCloudAccount: (
-    profile?: string,
-  ): Promise<KotobaCloudAccount | null> =>
-    ipcRenderer.invoke("kotoba-cloud-account-get", profile),
-  connectKotobaCloud: (
+  // Mithril account (this fork): the profile's personal API token,
+  // verified against mithril.fund on connect and on every read.
+  getMithrilAccount: (profile?: string): Promise<MithrilAccount | null> =>
+    ipcRenderer.invoke("mithril-account-get", profile),
+  connectMithril: (
     token: string,
     profile?: string,
-  ): Promise<KotobaCloudConnectResult> =>
-    ipcRenderer.invoke("kotoba-cloud-account-connect", token, profile),
-  disconnectKotobaCloud: (profile?: string): Promise<{ success: boolean }> =>
-    ipcRenderer.invoke("kotoba-cloud-account-disconnect", profile),
+  ): Promise<MithrilConnectResult> =>
+    ipcRenderer.invoke("mithril-account-connect", token, profile),
+  disconnectMithril: (profile?: string): Promise<{ success: boolean }> =>
+    ipcRenderer.invoke("mithril-account-disconnect", profile),
   // Device-grant sign-in (this fork): the Passkey happens in the default
   // browser; the main process holds the device code and polls for the token
-  startKotobaDeviceSignIn: (): Promise<KotobaDeviceSignIn> =>
-    ipcRenderer.invoke("kotoba-cloud-device-start"),
-  waitKotobaDeviceSignIn: (
-    profile?: string,
-  ): Promise<KotobaCloudConnectResult> =>
-    ipcRenderer.invoke("kotoba-cloud-device-wait", profile),
-  cancelKotobaDeviceSignIn: (): Promise<void> =>
-    ipcRenderer.invoke("kotoba-cloud-device-cancel"),
-  getKotobaCloudViewer: (): Promise<KotobaCloudViewerInfo> =>
-    ipcRenderer.invoke("kotoba-cloud-viewer"),
+  startMithrilDeviceSignIn: (): Promise<MithrilDeviceSignIn> =>
+    ipcRenderer.invoke("mithril-device-start"),
+  waitMithrilDeviceSignIn: (profile?: string): Promise<MithrilConnectResult> =>
+    ipcRenderer.invoke("mithril-device-wait", profile),
+  cancelMithrilDeviceSignIn: (): Promise<void> =>
+    ipcRenderer.invoke("mithril-device-cancel"),
+  getMithrilViewer: (): Promise<MithrilViewerInfo> =>
+    ipcRenderer.invoke("mithril-viewer"),
   // Organization switcher: memberships + the persisted billing context
-  getKotobaOrgs: (profile?: string): Promise<KotobaOrgState> =>
-    ipcRenderer.invoke("kotoba-cloud-orgs-get", profile),
-  selectKotobaOrg: (
+  getMithrilOrgs: (profile?: string): Promise<MithrilOrgState> =>
+    ipcRenderer.invoke("mithril-orgs-get", profile),
+  selectMithrilOrg: (
     handle: string | null,
     profile?: string,
-  ): Promise<KotobaCloudAccount | null> =>
-    ipcRenderer.invoke("kotoba-cloud-org-select", handle, profile),
-  signOutKotobaCloud: (): Promise<void> =>
-    ipcRenderer.invoke("kotoba-cloud-sign-out"),
-  // The gateway kotoba.cloud provides (per-user Hermes sandbox)
-  getKotobaGatewayStatus: (): Promise<KotobaGatewayInfo> =>
-    ipcRenderer.invoke("kotoba-cloud-gateway-status"),
-  launchKotobaGateway: (): Promise<KotobaGatewayInfo> =>
-    ipcRenderer.invoke("kotoba-cloud-gateway-launch"),
-  stopKotobaGateway: (): Promise<{ stopped: boolean; error?: string }> =>
-    ipcRenderer.invoke("kotoba-cloud-gateway-stop"),
-  openKotobaGateway: (url: string): Promise<{ opened: boolean }> =>
-    ipcRenderer.invoke("kotoba-cloud-gateway-open", url),
+  ): Promise<MithrilAccount | null> =>
+    ipcRenderer.invoke("mithril-org-select", handle, profile),
+  signOutMithril: (): Promise<void> => ipcRenderer.invoke("mithril-sign-out"),
+  // The gateway mithril.fund provides (per-user Hermes sandbox)
+  getMithrilGatewayStatus: (): Promise<MithrilGatewayInfo> =>
+    ipcRenderer.invoke("mithril-gateway-status"),
+  launchMithrilGateway: (): Promise<MithrilGatewayInfo> =>
+    ipcRenderer.invoke("mithril-gateway-launch"),
+  stopMithrilGateway: (): Promise<{ stopped: boolean; error?: string }> =>
+    ipcRenderer.invoke("mithril-gateway-stop"),
+  openMithrilGateway: (url: string): Promise<{ opened: boolean }> =>
+    ipcRenderer.invoke("mithril-gateway-open", url),
 
   // Cloud agent sync (profiles ↔ signed-in Hermes One account)
   syncAgents: (): Promise<AgentSyncResult> =>

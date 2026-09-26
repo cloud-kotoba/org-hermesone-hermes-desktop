@@ -3,7 +3,7 @@ import { t, getLocaleDirection } from "./index";
 
 describe("shared i18n", () => {
   it("returns English text by default", () => {
-    expect(t("welcome.title")).toBe("Welcome to Kotoba");
+    expect(t("welcome.title")).toBe("Welcome to Mithril");
   });
 
   it("falls back to the key when an English key is missing", () => {
@@ -11,27 +11,27 @@ describe("shared i18n", () => {
   });
 
   it("returns zh-CN text when available", () => {
-    expect(t("welcome.title", "zh-CN")).toBe("欢迎使用 Kotoba");
+    expect(t("welcome.title", "zh-CN")).toBe("欢迎使用 Mithril");
   });
 
   it("returns zh-TW text when available", () => {
-    expect(t("welcome.title", "zh-TW")).toBe("歡迎使用 Kotoba");
+    expect(t("welcome.title", "zh-TW")).toBe("歡迎使用 Mithril");
   });
 
   it("returns es text when available", () => {
-    expect(t("welcome.title", "es")).toBe("Bienvenido a Kotoba");
+    expect(t("welcome.title", "es")).toBe("Bienvenido a Mithril");
   });
 
   it("returns id text when available", () => {
-    expect(t("welcome.title", "id")).toBe("Selamat datang di Kotoba");
+    expect(t("welcome.title", "id")).toBe("Selamat datang di Mithril");
   });
 
   it("returns pl text when available", () => {
-    expect(t("welcome.title", "pl")).toBe("Witamy w Kotoba");
+    expect(t("welcome.title", "pl")).toBe("Witamy w Mithril");
   });
 
   it("returns he text when available", () => {
-    expect(t("welcome.title", "he")).toBe("ברוכים הבאים ל-Kotoba");
+    expect(t("welcome.title", "he")).toBe("ברוכים הבאים ל-Mithril");
   });
 
   it("reports he as a right-to-left locale", () => {

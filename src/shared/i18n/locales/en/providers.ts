@@ -66,28 +66,28 @@ export default {
     minimaxDesc: "Use your MiniMax subscription",
     nousDesc: "Sign in with your Nous Portal subscription",
   },
-  kotobaAccount: {
-    sectionTitle: "Kotoba Cloud account",
+  mithrilAccount: {
+    sectionTitle: "Mithril account",
     sectionHint:
-      "Sign in to Kotoba Cloud in your browser (Passkey), issue a personal API token on kotoba.cloud/account, and connect it here. It becomes this profile's KOTOBA_API_KEY — the key the Kotoba Cloud provider and the agent use — and is kept in the OS keychain, not in .env.",
-    signIn: "Sign in to Kotoba Cloud",
+      "Sign in to Mithril in your browser (Passkey), issue a personal API token on console.mithril.fund/account, and connect it here. It becomes this profile's KOTOBA_API_KEY — the key the Mithril provider and the agent use — and is kept in the OS keychain, not in .env.",
+    signIn: "Sign in to Mithril",
     signOut: "Disconnect",
     connected: "Connected",
     notLive: "Token no longer valid",
     token: "token …{{id}}",
     credits: "${{amount}} ai credit",
     creditsTitle:
-      "ai credit available on your Kotoba Cloud account (GET /v1/billing/status). Top up on kotoba.cloud/billing.",
+      "ai credit available on your Mithril account (GET /v1/billing/status). Top up on console.mithril.fund/billing.",
     creditsUnknown: "balance unavailable",
     creditsUnknownTitle:
       "This token cannot read the balance (it has no billing:read scope). Chat still works.",
-    manage: "Manage on kotoba.cloud",
-    modalTitle: "Sign in to Kotoba Cloud",
+    manage: "Manage on mithril.fund",
+    modalTitle: "Sign in to Mithril",
     modalHint:
-      "Sign in with the Passkey you already use for kotoba.cloud — in your own browser. Or paste a personal API token (kc_pat_…) issued on kotoba.cloud/account; it is checked with Kotoba Cloud before it is saved.",
+      "Sign in with the Passkey you already use for mithril.fund — in your own browser. Or paste a personal API token (kc_pat_…) issued on console.mithril.fund/account; it is checked with Mithril before it is saved.",
     passkey: "Sign in with your browser (Passkey)",
     passkeyHint:
-      "Opens kotoba.cloud in your default browser. Sign in there with your Passkey and approve the code this window shows; this app then receives its own token (chat, balance, agents, orgs, hosted Hermes) — nothing to paste.",
+      "Opens mithril.fund in your default browser. Sign in there with your Passkey and approve the code this window shows; this app then receives its own token (chat, balance, agents, orgs, hosted Hermes) — nothing to paste.",
     passkeyWorking: "Waiting for approval in the browser…",
     deviceHint:
       "Approve this code in the browser that just opened (sign in with your Passkey first if asked). Check that the code there matches this one.",
@@ -95,21 +95,21 @@ export default {
     copied: "Copied",
     reopenBrowser: "Open the browser again",
     orPaste: "or paste a token you issued yourself",
-    openAccount: "Open kotoba.cloud/account",
+    openAccount: "Open console.mithril.fund/account",
     tokenLabel: "Personal API token",
     tokenPlaceholder: "kc_pat_…",
     connect: "Connect",
-    connecting: "Checking with Kotoba Cloud…",
-    successHint: "Connected. Kotoba Cloud is ready as a provider.",
+    connecting: "Checking with Mithril…",
+    successHint: "Connected. Mithril is ready as a provider.",
     failed: "Could not connect.",
     gatewayLabel: "Gateway",
     gatewayLocal: "local Hermes on this machine",
-    gatewayCloud: "Kotoba Cloud — your own Hermes in a sandbox",
+    gatewayCloud: "Mithril — your own Hermes in a sandbox",
     gatewayRunning: "cloud gateway running",
     gatewayStarting: "cloud gateway starting…",
     gatewayStopped: "cloud gateway stopped",
     gatewaySignedOut: "sign in with Passkey to use the cloud gateway",
-    gatewayUnavailable: "cloud gateway lane not available on kotoba.cloud yet",
+    gatewayUnavailable: "cloud gateway lane not available on mithril.fund yet",
     gatewayLaunch: "Launch cloud gateway",
     gatewayLaunchHint:
       "One flat charge per launch or resume from your ai credit; nothing while it runs; sessions end after 3 hours.",
@@ -117,12 +117,12 @@ export default {
     gatewayStop: "Stop",
     gatewayLaunching: "Launching…",
     gatewayOpenHint:
-      "Opens Kotoba chat — your cloud agent's full web UI — in a window. The desktop's own chat still talks to the local Hermes.",
+      "Opens Mithril chat — your cloud agent's full web UI — in a window. The desktop's own chat still talks to the local Hermes.",
     contextLabel: "Billing",
     contextPersonal: "Personal",
     contextOrg: "{{handle}} ({{role}})",
     contextHint:
-      "Which ledger the balance shows: your personal credit or an organization's. Members and seats are managed on kotoba.cloud.",
+      "Which ledger the balance shows: your personal credit or an organization's. Members and seats are managed on mithril.fund.",
     orgsLoading: "loading organizations…",
     orgsReconnect: "Reconnect to see organizations",
     orgsReconnectTitle:
@@ -130,7 +130,7 @@ export default {
     orgsReconnectAction: "Reconnect",
     orgsUnavailable: "organizations unavailable",
     orgsUnavailableTitle:
-      "kotoba.cloud does not serve organization memberships yet (GET /v1/org/memberships answered 404).",
+      "mithril.fund does not serve organization memberships yet (GET /v1/org/memberships answered 404).",
     orgsNone: "no organizations",
     orgsError: "couldn't load organizations",
     orgRoleInsufficientTitle:

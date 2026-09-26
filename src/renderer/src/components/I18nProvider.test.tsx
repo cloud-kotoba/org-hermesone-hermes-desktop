@@ -66,7 +66,7 @@ describe("I18nProvider", () => {
       );
     });
 
-    expect(await screen.findByText("Welcome to Kotoba")).toBeInTheDocument();
+    expect(await screen.findByText("Welcome to Mithril")).toBeInTheDocument();
   });
 
   it("renders Spanish translations after switching locale", async () => {
@@ -83,7 +83,7 @@ describe("I18nProvider", () => {
     });
 
     expect(setLocale).toHaveBeenLastCalledWith("es");
-    expect(await screen.findByText("Bienvenido a Kotoba")).toBeInTheDocument();
+    expect(await screen.findByText("Bienvenido a Mithril")).toBeInTheDocument();
   });
 
   it("does not overwrite the main-process locale with the startup fallback", async () => {
@@ -109,6 +109,6 @@ describe("I18nProvider", () => {
     });
 
     expect(setLocale).toHaveBeenLastCalledWith("es");
-    expect(await screen.findByText("Bienvenido a Kotoba")).toBeInTheDocument();
+    expect(await screen.findByText("Bienvenido a Mithril")).toBeInTheDocument();
   });
 });

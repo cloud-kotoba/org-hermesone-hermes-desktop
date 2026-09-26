@@ -1,5 +1,5 @@
 export default {
-  title: "Witamy w Kotoba",
+  title: "Witamy w Mithril",
   subtitle:
     "Twój samodoskonalący się asystent AI działający lokalnie na Twoim komputerze. Prywatny, mocny i stale uczący się.",
   installIssueTitle: "Problem z instalacją",

@@ -3,10 +3,10 @@ import { createHash } from "crypto";
 import { readFileSync, statSync, unlinkSync } from "fs";
 import { join } from "path";
 import {
-  KOTOBA_CLOUD_ORIGIN,
-  kotobaCloudToken,
-  kotobaPrincipalId,
-} from "./kotoba-cloud-account";
+  MITHRIL_ORIGIN,
+  mithrilToken,
+  mithrilPrincipalId,
+} from "./mithril-account";
 import {
   listProfiles,
   createProfile,
@@ -29,8 +29,8 @@ import type {
   AgentSyncStatus,
 } from "../shared/agent-sync";
 
-// Syncs desktop profiles (the app's "agents") with the owner's Kotoba Cloud
-// agents (kotoba.cloud /v1/agents CRUD, bearer-authenticated with this
+// Syncs desktop profiles (the app's "agents") with the owner's Mithril
+// agents (mithril.fund /v1/agents CRUD, bearer-authenticated with this
 // machine's personal API token). Phase 1 scope — the free parts from the backend's
 // docs/agent-sync.md: color, persona (SOUL.md ↔ systemPrompt), memory
 // (memories/MEMORY.md ↔ memory), and config basics (model/provider). Names are
@@ -465,12 +465,12 @@ let activeSync: Promise<AgentSyncResult> | null = null;
 let lastResult: AgentSyncResult | null = null;
 
 /**
- * The Kotoba Cloud account this desktop syncs to, or null when it has none.
+ * The Mithril account this desktop syncs to, or null when it has none.
  *
- * There is no separate user record to read: kotoba.cloud signs a person in
+ * There is no separate user record to read: mithril.fund signs a person in
  * with a Passkey in the browser and the desktop's account IS the personal
- * API token that sign-in approved for this machine (kotoba-cloud-device,
- * kotoba-cloud-account). So the token
+ * API token that sign-in approved for this machine (mithril-device,
+ * mithril-account). So the token
  * is the credential AND the identity — its principal segment is the
  * `accountId` that keeps one machine's links from being applied against
  * somebody else's agents.
@@ -485,11 +485,11 @@ export function cloudAccount(): {
   token: string;
 } | null {
   // the one accessor — keychain store, or plaintext .env without a keychain
-  const token = kotobaCloudToken(undefined);
+  const token = mithrilToken(undefined);
   if (!token) return null;
-  const accountId = kotobaPrincipalId(token);
+  const accountId = mithrilPrincipalId(token);
   if (!accountId) return null;
-  return { apiUrl: KOTOBA_CLOUD_ORIGIN, accountId, token };
+  return { apiUrl: MITHRIL_ORIGIN, accountId, token };
 }
 
 export function getAgentSyncStatus(): AgentSyncStatus {

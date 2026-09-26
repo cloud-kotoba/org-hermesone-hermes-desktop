@@ -2,7 +2,7 @@
 
 The Office reads each profile's cron scheduler so a cron-driven bot's day of work — an attempt in flight, a run that failed, the next run — shows on its nameplate and in its details, instead of every bot standing idle.
 
-This fork's fleet is ~90 profiles that each run one daily Hermes cron job and hold no resident gateway. Upstream's rule ([[src/renderer/src/screens/Office/office3d/agents.ts#profileToOfficeAgent]]: a running Kanban card, else gateway liveness, else idle) drew all of them amber all day, and on 2026-09-22 drew the 57 whose morning run had failed (`screen-route-refused`, an api.kotoba.cloud outage) the same amber as the 25 that had succeeded. Measured that day.
+This fork's fleet is ~90 profiles that each run one daily Hermes cron job and hold no resident gateway. Upstream's rule ([[src/renderer/src/screens/Office/office3d/agents.ts#profileToOfficeAgent]]: a running Kanban card, else gateway liveness, else idle) drew all of them amber all day, and on 2026-09-22 drew the 57 whose morning run had failed (`screen-route-refused`, an api.mithril.fund outage) the same amber as the 25 that had succeeded. Measured that day.
 
 ## Reading a profile's cron state
 
@@ -16,7 +16,7 @@ This fork's fleet is ~90 profiles that each run one daily Hermes cron job and ho
 
 Writing a credential restarts the profile's gateway so it picks the value up — and kills whatever that gateway is running: Hermes reports `Gateway shutdown (<phase>) killed the job's tool subprocess before the run finished.` Measured 2026-09-22: three profiles lost a daily run to exactly that message, one of them twice, on a day when a key was written while ~10 cron jobs were in flight across the fleet.
 
-[[src/main/gateway-restart-defer.ts#restartGatewayWhenIdle]] holds an **incidental** restart until [[src/main/profile-cron.ts#countRunningExecutions]] reads zero for that profile, polling every 15 s for up to 10 minutes, then restarting anyway — a gateway holding a stale credential is its own failure, and waiting forever would hide it. One deferral per profile, so a burst of env writes queues one restart rather than several. The nine incidental call sites in [[src/main/ipc/register.ts#registerIpcHandlers]] (env writes, model/provider changes, auxiliary config, platform config, this fork's Kotoba Cloud sign-in) route through it; the `restart-gateway` IPC the person triggers from Settings does not — a restart asked for happens when it is asked for. An unreadable `executions.db` reads as idle, so one broken file cannot freeze every future restart.
+[[src/main/gateway-restart-defer.ts#restartGatewayWhenIdle]] holds an **incidental** restart until [[src/main/profile-cron.ts#countRunningExecutions]] reads zero for that profile, polling every 15 s for up to 10 minutes, then restarting anyway — a gateway holding a stale credential is its own failure, and waiting forever would hide it. One deferral per profile, so a burst of env writes queues one restart rather than several. The nine incidental call sites in [[src/main/ipc/register.ts#registerIpcHandlers]] (env writes, model/provider changes, auxiliary config, platform config, this fork's Mithril sign-in) route through it; the `restart-gateway` IPC the person triggers from Settings does not — a restart asked for happens when it is asked for. An unreadable `executions.db` reads as idle, so one broken file cannot freeze every future restart.
 
 ## Tests
 

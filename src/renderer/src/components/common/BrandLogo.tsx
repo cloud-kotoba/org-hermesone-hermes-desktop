@@ -3,7 +3,7 @@ import claudeLogo from "../../assets/logos/claude-color.svg";
 import geminiLogo from "../../assets/logos/gemini-color.svg";
 import nousLogo from "../../assets/logos/nousresearch.svg";
 import hermesoneLogo from "../../assets/hermes-icon.svg";
-import kotobaLogo from "../../assets/kotoba-mark.svg";
+import mithrilLogo from "../../assets/mithril-mark.svg";
 import openaiLogo from "../../assets/logos/openai.svg";
 import openrouterLogo from "../../assets/logos/openrouter.svg";
 import moonshotLogo from "../../assets/logos/moonshot.svg";
@@ -49,7 +49,7 @@ import atomicchatLogo from "../../assets/logos/atomicchat.svg";
 import qwenLogo from "../../assets/logos/qwen.svg";
 
 type BrandKey =
-  | "kotoba"
+  | "mithril"
   | "hermesone"
   | "claude"
   | "gemini"
@@ -100,7 +100,7 @@ type BrandKey =
   | "unknown";
 
 const LOGOS: Record<Exclude<BrandKey, "unknown">, string> = {
-  kotoba: kotobaLogo,
+  mithril: mithrilLogo,
   hermesone: hermesoneLogo,
   claude: claudeLogo,
   gemini: geminiLogo,
@@ -154,7 +154,8 @@ function detectBrand(provider?: string, modelId?: string): BrandKey {
   const haystack = `${provider || ""} ${modelId || ""}`.toLowerCase();
   // Match "hermesone" specifically — NOT bare "hermes", which would mis-tag
   // Nous's Hermes-* models (served under the `nous` provider).
-  if (/kotoba/.test(haystack)) return "kotoba";
+  // kotoba: the provider name / host before the Mithril rename
+  if (/mithril|kotoba/.test(haystack)) return "mithril";
   if (/hermes[-\s]?one/.test(haystack)) return "hermesone";
   if (/(claude|anthropic)/.test(haystack)) return "claude";
   if (/(gemini|google)/.test(haystack)) return "gemini";
