@@ -1,4 +1,6 @@
 import {
+  lazy,
+  Suspense,
   useCallback,
   useEffect,
   useLayoutEffect,
@@ -9,6 +11,7 @@ import {
 import {
   Crown,
   DoorOpen,
+  Box,
   Footprints,
   LogOut,
   Move,
@@ -21,7 +24,7 @@ import type { GpuStatus } from "../../../../shared/gpu";
 import { useI18n } from "../../components/useI18n";
 import oneChatIcon from "../../assets/images/one-chat.svg";
 import OneChatModal from "./OneChatModal";
-import Office3D from "./office3d/Office3D";
+import Office2D from "./Office2D";
 import RepInteractionPanel from "./RepInteractionPanel";
 import { officeAgentsChanged, profilesToOfficeAgents } from "./office3d/agents";
 import {
@@ -61,6 +64,21 @@ interface AgentStatusRequest {
   promise: Promise<OfficeAgent[]>;
 }
 
+// The 3D scene (three.js + GLB assets) is opt-in: it is split into its own
+// chunk and only fetched once the user switches the Office to 3D.
+const Office3D = lazy(() => import("./office3d/Office3D"));
+
+// 2D is the default view; the choice persists like the other renderer prefs.
+const VIEW_STORAGE_KEY = "hermes:office:view";
+
+function readStoredView(): "2d" | "3d" {
+  try {
+    return localStorage.getItem(VIEW_STORAGE_KEY) === "3d" ? "3d" : "2d";
+  } catch {
+    return "2d";
+  }
+}
+
 // The CEO assignment is desktop-local UI state (one agent at a time), persisted
 // across reloads like the app's other renderer preferences (theme, locale).
 const CEO_STORAGE_KEY = "hermes:office:ceo";
@@ -74,8 +92,9 @@ function readStoredCeo(): string | null {
 }
 
 /**
- * The Office tab. Renders a native, in-renderer 3D office (no external dev
- * server / webview) where each Hermes profile appears as an interactive agent.
+ * The Office tab. Renders a native, in-renderer office (no external dev
+ * server / webview) where each Hermes profile appears as an interactive agent:
+ * a flat 2D map by default, or the 3D scene when the user opts in.
  */
 function Office({ visible, profile }: OfficeProps): React.JSX.Element {
   const { t } = useI18n();
@@ -84,6 +103,8 @@ function Office({ visible, profile }: OfficeProps): React.JSX.Element {
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [ceoId, setCeoId] = useState<string | null>(readStoredCeo);
   const [chatOpen, setChatOpen] = useState(false);
+  const [view, setView] = useState<"2d" | "3d">(readStoredView);
+  const is3d = view === "3d";
   // Enterable buildings: clicking one in the city view focuses it (shows the
   // Enter prompt); entering switches the whole screen to that interior and
   // unmounts the rest of the city.
@@ -321,6 +342,23 @@ function Office({ visible, profile }: OfficeProps): React.JSX.Element {
     if (!visible && walkMode) exitWalkMode();
   }, [visible, walkMode, exitWalkMode]);
 
+  // Walk mode and the building mover only exist in the 3D scene; leaving it
+  // drops both so no 3D-only key handler or overlay outlives the canvas.
+  const toggleView = useCallback(() => {
+    const next = is3d ? "2d" : "3d";
+    if (next === "2d") {
+      if (walkMode) exitWalkMode();
+      setDevMode(false);
+    }
+    setFocusedBuilding(null);
+    setView(next);
+    try {
+      localStorage.setItem(VIEW_STORAGE_KEY, next);
+    } catch {
+      // localStorage may be unavailable in sandboxed renderers
+    }
+  }, [is3d, walkMode, exitWalkMode]);
+
   // The avatar crossed a doorway: mount that building's interior (or the
   // city when back outside). Building-scoped overlays close on any move.
   const handlePlayerPlace = useCallback((place: AgentPlace) => {
@@ -533,7 +571,28 @@ function Office({ visible, profile }: OfficeProps): React.JSX.Element {
             <Users size={15} />
             {t("office.agentCount", { count: agents.length })}
           </span>
-          {import.meta.env.DEV && (
+          <button
+            type="button"
+            onClick={toggleView}
+            aria-pressed={is3d}
+            title={is3d ? t("office.view2d") : t("office.view3d")}
+            style={{
+              display: "inline-flex",
+              alignItems: "center",
+              gap: 6,
+              padding: "6px 10px",
+              borderRadius: 8,
+              border: "1px solid var(--border, rgba(0,0,0,0.12))",
+              background: "transparent",
+              color: "var(--text-secondary)",
+              cursor: "pointer",
+              fontSize: 13,
+            }}
+          >
+            <Box size={14} />
+            {is3d ? t("office.view2d") : t("office.view3d")}
+          </button>
+          {import.meta.env.DEV && is3d && (
             <button
               type="button"
               onClick={() =>
@@ -599,27 +658,43 @@ function Office({ visible, profile }: OfficeProps): React.JSX.Element {
       </header>
 
       <div style={{ position: "relative", flex: 1, minHeight: 0 }}>
-        <Office3D
-          agents={positionedAgents}
-          selectedId={selectedId}
-          onSelectAgent={setSelectedId}
-          location={location}
-          onFocusBuilding={setFocusedBuilding}
-          onAtmActivate={handleAtmActivate}
-          tellerLabel={t("office.repBankTeller")}
-          onTellerActivate={handleTellerActivate}
-          onCarActivate={handleCarActivate}
-          onDeskActivate={handleDeskActivate}
-          walkMode={walkMode}
-          playerLabel={t("office.you")}
-          onPlayerPlaceChange={handlePlayerPlace}
-          onNearbyInteraction={setNearby}
-          devMode={devMode}
-          onDevLog={setDevLog}
-        />
+        {is3d ? (
+          <Suspense fallback={null}>
+            <Office3D
+              agents={positionedAgents}
+              selectedId={selectedId}
+              onSelectAgent={setSelectedId}
+              location={location}
+              onFocusBuilding={setFocusedBuilding}
+              onAtmActivate={handleAtmActivate}
+              tellerLabel={t("office.repBankTeller")}
+              onTellerActivate={handleTellerActivate}
+              onCarActivate={handleCarActivate}
+              onDeskActivate={handleDeskActivate}
+              walkMode={walkMode}
+              playerLabel={t("office.you")}
+              onPlayerPlaceChange={handlePlayerPlace}
+              onNearbyInteraction={setNearby}
+              devMode={devMode}
+              onDevLog={setDevLog}
+            />
+          </Suspense>
+        ) : (
+          <Office2D
+            agents={positionedAgents}
+            selectedId={selectedId}
+            onSelectAgent={setSelectedId}
+            location={location}
+            onEnterBuilding={enterBuilding}
+            onAtmActivate={handleAtmActivate}
+            tellerLabel={t("office.repBankTeller")}
+            onTellerActivate={handleTellerActivate}
+            onCarActivate={handleCarActivate}
+          />
+        )}
 
         {/* Walk-mode toggle: drop in as an avatar / return to the sky view. */}
-        {!devMode && (
+        {is3d && !devMode && (
           <button
             type="button"
             onClick={walkMode ? exitWalkMode : enterWalkMode}
@@ -828,7 +903,7 @@ function Office({ visible, profile }: OfficeProps): React.JSX.Element {
           </div>
         )}
 
-        {gpuStatus?.disabled && !gpuNoticeDismissed && (
+        {is3d && gpuStatus?.disabled && !gpuNoticeDismissed && (
           <div
             style={{
               position: "absolute",

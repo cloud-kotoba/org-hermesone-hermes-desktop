@@ -16,6 +16,15 @@ vi.mock("./office3d/Office3D", () => ({
   ),
 }));
 
+// The 2D view is the Office tab's default; it renders the same agent list.
+vi.mock("./Office2D", () => ({
+  default: ({ agents }: { agents: OfficeAgent[] }) => (
+    <div data-testid="office-agents">
+      {agents.map((agent) => `${agent.id}:${agent.status}`).join(",")}
+    </div>
+  ),
+}));
+
 vi.mock("./OneChatModal", () => ({
   default: () => null,
 }));

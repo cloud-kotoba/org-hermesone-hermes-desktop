@@ -38,6 +38,8 @@ export default {
   // Space representatives (bank teller interaction menu)
   walkMode: "歩き回る",
   walkModeExit: "ウォーク終了 (Esc)",
+  view2d: "2D 表示",
+  view3d: "3D 表示",
   walkHint: "WASD / 矢印キーで移動 · Shiftで走る · Escで終了",
   you: "あなた",
   repBankTeller: "銀行の窓口係",
