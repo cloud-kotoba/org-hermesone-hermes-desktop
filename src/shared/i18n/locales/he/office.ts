@@ -1,6 +1,6 @@
 export default {
   title: "אופיס",
-  subtitle: "הסוכנים שלכם בעבודה, בשידור חי בתלת-ממד",
+  subtitle: "הסוכנים שלכם בעבודה, בשידור חי",
   loadingAgents: "טוען סוכנים...",
   noAgents: "לא נמצאו סוכנים.",
   refresh: "רענון",

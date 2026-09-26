@@ -1,6 +1,6 @@
 export default {
   title: "المكتب",
-  subtitle: "وكلاؤك في العمل، مباشر ثلاثي الأبعاد",
+  subtitle: "وكلاؤك في العمل، مباشر",
   loadingAgents: "جارٍ تحميل الوكلاء...",
   noAgents: "لم يتم العثور على وكلاء.",
   refresh: "تحديث",
