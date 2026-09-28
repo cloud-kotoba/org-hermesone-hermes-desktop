@@ -279,7 +279,7 @@ describe("providerRouteForEnvKey", () => {
     }
   });
 
-  it("orders Kotoba Cloud first, Hermes One second and AIML API last among LLM keys", () => {
+  it("orders Mithril first, Hermes One second and AIML API last among LLM keys", () => {
     const llm = SETTINGS_SECTIONS.find(
       (s) => s.title === "constants.sectionLlmProviders",
     )!;

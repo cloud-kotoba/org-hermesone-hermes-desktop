@@ -66,7 +66,7 @@ export interface PortfolioTokenView {
   /** Human-readable amount (backend normalises decimals). */
   balance: number;
   /**
-   * USD value, or null when the backend does not price. Kotoba Cloud's
+   * USD value, or null when the backend does not price. Mithril's
    * wallet plane reads balances off-chain-keylessly and has no price oracle;
    * a 0 here would render as "worth nothing" rather than "not priced", which
    * is the one mistake a balance display must not make. Render null as a

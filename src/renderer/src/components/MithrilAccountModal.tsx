@@ -1,32 +1,32 @@
-// @lat: [[kotoba-cloud-account#Kotoba Cloud account#Sign-in modal]]
+// @lat: [[mithril-account#Mithril account#Sign-in modal]]
 import { useEffect, useRef, useState } from "react";
 import { X, Check, Copy } from "../assets/icons";
 import { useI18n } from "./useI18n";
 import HermesLogo from "./common/HermesLogo";
 import type {
-  KotobaCloudAccount,
-  KotobaDeviceSignIn,
+  MithrilAccount,
+  MithrilDeviceSignIn,
 } from "../../../shared/account";
 
-const ACCOUNT_URL = "https://kotoba.cloud/account";
+const ACCOUNT_URL = "https://console.mithril.fund/account";
 
 interface Props {
   profile?: string;
   onClose: () => void;
-  onConnected: (account: KotobaCloudAccount) => void;
+  onConnected: (account: MithrilAccount) => void;
 }
 
 /**
- * "Sign in to Kotoba Cloud". The primary path is the device grant: the
+ * "Sign in to Mithril". The primary path is the device grant: the
  * approval page opens in the default browser, the person signs in there with
  * their Passkey and approves the code shown here, and the main process
  * receives this machine's own scoped token and saves it as the profile's
  * KOTOBA_API_KEY. A Passkey inside an app window never reached the person's
  * authenticator, which is why this no longer opens one. Pasting a token
- * issued on kotoba.cloud/account stays as the manual path. Nothing is stored
+ * issued on console.mithril.fund/account stays as the manual path. Nothing is stored
  * on a refusal, and the refusal is shown by name.
  */
-function KotobaCloudAccountModal({
+function MithrilAccountModal({
   profile,
   onClose,
   onConnected,
@@ -37,14 +37,14 @@ function KotobaCloudAccountModal({
     "idle" | "running" | "device" | "success" | "error"
   >("idle");
   const [error, setError] = useState<string | null>(null);
-  const [device, setDevice] = useState<KotobaDeviceSignIn | null>(null);
+  const [device, setDevice] = useState<MithrilDeviceSignIn | null>(null);
   const [copied, setCopied] = useState(false);
   const waiting = useRef(false);
 
   // closing the dialog mid-sign-in stops the main process's polling
   useEffect(
     () => () => {
-      if (waiting.current) void window.hermesAPI.cancelKotobaDeviceSignIn();
+      if (waiting.current) void window.hermesAPI.cancelMithrilDeviceSignIn();
     },
     [],
   );
@@ -55,10 +55,10 @@ function KotobaCloudAccountModal({
     setError(null);
     setDevice(null);
     try {
-      const d = await window.hermesAPI.startKotobaDeviceSignIn();
+      const d = await window.hermesAPI.startMithrilDeviceSignIn();
       setDevice(d);
       waiting.current = true;
-      const r = await window.hermesAPI.waitKotobaDeviceSignIn(profile);
+      const r = await window.hermesAPI.waitMithrilDeviceSignIn(profile);
       waiting.current = false;
       if (r.status === "connected") {
         setStatus("success");
@@ -70,7 +70,7 @@ function KotobaCloudAccountModal({
     } catch (err) {
       waiting.current = false;
       setStatus("error");
-      setError((err as Error)?.message || t("providers.kotobaAccount.failed"));
+      setError((err as Error)?.message || t("providers.mithrilAccount.failed"));
     }
   }
 
@@ -92,7 +92,7 @@ function KotobaCloudAccountModal({
     setStatus("running");
     setError(null);
     try {
-      const r = await window.hermesAPI.connectKotobaCloud(token, profile);
+      const r = await window.hermesAPI.connectMithril(token, profile);
       if (r.status === "connected") {
         setStatus("success");
         onConnected(r.account);
@@ -102,18 +102,18 @@ function KotobaCloudAccountModal({
       }
     } catch (err) {
       setStatus("error");
-      setError((err as Error)?.message || t("providers.kotobaAccount.failed"));
+      setError((err as Error)?.message || t("providers.mithrilAccount.failed"));
     }
   }
 
   const subtitle =
     status === "error"
-      ? error || t("providers.kotobaAccount.failed")
+      ? error || t("providers.mithrilAccount.failed")
       : status === "success"
-        ? t("providers.kotobaAccount.successHint")
+        ? t("providers.mithrilAccount.successHint")
         : status === "device"
-          ? t("providers.kotobaAccount.deviceHint")
-          : t("providers.kotobaAccount.modalHint");
+          ? t("providers.mithrilAccount.deviceHint")
+          : t("providers.mithrilAccount.modalHint");
 
   return (
     <div className="models-modal-overlay" onClick={onClose}>
@@ -146,7 +146,7 @@ function KotobaCloudAccountModal({
         </div>
 
         <h2 className="hermes-signin-title">
-          {t("providers.kotobaAccount.modalTitle")}
+          {t("providers.mithrilAccount.modalTitle")}
         </h2>
         <p className="hermes-signin-subtitle">{subtitle}</p>
 
@@ -157,8 +157,8 @@ function KotobaCloudAccountModal({
               {copied ? <Check size={15} /> : <Copy size={15} />}
               <span>
                 {copied
-                  ? t("providers.kotobaAccount.copied")
-                  : t("providers.kotobaAccount.copyCode")}
+                  ? t("providers.mithrilAccount.copied")
+                  : t("providers.mithrilAccount.copyCode")}
               </span>
             </button>
             <button
@@ -170,14 +170,14 @@ function KotobaCloudAccountModal({
                 )
               }
             >
-              {t("providers.kotobaAccount.reopenBrowser")}
+              {t("providers.mithrilAccount.reopenBrowser")}
             </button>
           </>
         )}
 
         {status !== "success" && status !== "device" && (
           <form
-            className="kotoba-signin-form"
+            className="mithril-signin-form"
             onSubmit={(e) => {
               e.preventDefault();
               void connect();
@@ -189,31 +189,31 @@ function KotobaCloudAccountModal({
               onClick={() => void signInWithBrowser()}
               disabled={status === "running"}
             >
-              {t("providers.kotobaAccount.passkey")}
+              {t("providers.mithrilAccount.passkey")}
             </button>
-            <p className="kotoba-signin-label">
-              {t("providers.kotobaAccount.passkeyHint")}
+            <p className="mithril-signin-label">
+              {t("providers.mithrilAccount.passkeyHint")}
             </p>
-            <p className="kotoba-signin-label kotoba-signin-or">
-              {t("providers.kotobaAccount.orPaste")}
+            <p className="mithril-signin-label mithril-signin-or">
+              {t("providers.mithrilAccount.orPaste")}
             </p>
             <button
               type="button"
               className="btn btn-secondary btn-sm"
               onClick={() => void window.hermesAPI.openExternal(ACCOUNT_URL)}
             >
-              {t("providers.kotobaAccount.openAccount")}
+              {t("providers.mithrilAccount.openAccount")}
             </button>
-            <label className="kotoba-signin-label" htmlFor="kotoba-cloud-token">
-              {t("providers.kotobaAccount.tokenLabel")}
+            <label className="mithril-signin-label" htmlFor="mithril-token">
+              {t("providers.mithrilAccount.tokenLabel")}
             </label>
             <input
-              id="kotoba-cloud-token"
+              id="mithril-token"
               className="input"
               type="password"
               autoComplete="off"
               spellCheck={false}
-              placeholder={t("providers.kotobaAccount.tokenPlaceholder")}
+              placeholder={t("providers.mithrilAccount.tokenPlaceholder")}
               value={token}
               onChange={(e) => setToken(e.target.value)}
               disabled={status === "running"}
@@ -224,8 +224,8 @@ function KotobaCloudAccountModal({
               disabled={!token.trim() || status === "running"}
             >
               {status === "running"
-                ? t("providers.kotobaAccount.connecting")
-                : t("providers.kotobaAccount.connect")}
+                ? t("providers.mithrilAccount.connecting")
+                : t("providers.mithrilAccount.connect")}
             </button>
           </form>
         )}
@@ -233,11 +233,11 @@ function KotobaCloudAccountModal({
         <div className="hermes-signin-footer">
           <span className="hermes-signin-footer-status">
             {status === "running"
-              ? t("providers.kotobaAccount.connecting")
+              ? t("providers.mithrilAccount.connecting")
               : status === "device"
-                ? t("providers.kotobaAccount.passkeyWorking")
+                ? t("providers.mithrilAccount.passkeyWorking")
                 : status === "success"
-                  ? t("providers.kotobaAccount.connected")
+                  ? t("providers.mithrilAccount.connected")
                   : ""}
           </span>
           <button className="hermes-signin-cancel" onClick={onClose}>
@@ -249,4 +249,4 @@ function KotobaCloudAccountModal({
   );
 }
 
-export default KotobaCloudAccountModal;
+export default MithrilAccountModal;

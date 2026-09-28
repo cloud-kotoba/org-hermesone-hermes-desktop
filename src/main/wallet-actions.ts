@@ -45,7 +45,7 @@ export async function getWalletPortfolio(
       },
     );
     const data = (await res.json().catch(() => ({}))) as {
-      // Kotoba Cloud answers the rows flat, plus `unread`: the symbols whose
+      // Mithril answers the rows flat, plus `unread`: the symbols whose
       // balance could not be read. A row that could not be read is NOT listed
       // as zero — see app-kotoba-cloud.wallets.
       tokens?: PortfolioTokenRaw[];
@@ -88,7 +88,7 @@ export async function getWalletPortfolio(
  * `POST /v1/wallets`.
  *
  * This used to ask the backend to PROVISION a custodial (Bankr) wallet.
- * Kotoba Cloud does not do that and will not: it holds no keys, so there is
+ * Mithril does not do that and will not: it holds no keys, so there is
  * nothing to provision. What it offers instead is the half that is safe —
  * the account remembers an address the person already controls, and reads
  * its balances from the chain. The registered row comes back

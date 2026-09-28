@@ -1,7 +1,7 @@
 @import "tailwindcss";
 
 /* ========================================================================
-   Kotoba Desktop — Clean Design System
+   Mithril Desktop — Clean Design System
    Dark + Light mode, no gradients, flat design
    ======================================================================== */
 
@@ -9156,8 +9156,8 @@ body:has(.shell-vibrant),
   color: var(--text-primary);
   user-select: all;
 }
-/* Kotoba Cloud sign-in (this fork): token paste form inside the sign-in modal */
-.kotoba-signin-form {
+/* Mithril sign-in (this fork): token paste form inside the sign-in modal */
+.mithril-signin-form {
   display: flex;
   flex-direction: column;
   align-items: stretch;
@@ -9166,18 +9166,18 @@ body:has(.shell-vibrant),
   width: min(100%, 360px);
   text-align: left;
 }
-.kotoba-signin-form .btn {
+.mithril-signin-form .btn {
   justify-content: center;
 }
-.kotoba-signin-label {
+.mithril-signin-label {
   font-size: 12px;
   color: var(--text-muted);
 }
-.kotoba-signin-or {
+.mithril-signin-or {
   text-align: center;
   margin-top: 6px;
 }
-.kotoba-gateway-row {
+.mithril-gateway-row {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
@@ -9187,10 +9187,10 @@ body:has(.shell-vibrant),
   border-top: 1px solid var(--border-subtle, rgba(255, 255, 255, 0.08));
   font-size: 13px;
 }
-.kotoba-gateway-row .kotoba-gateway-label {
+.mithril-gateway-row .mithril-gateway-label {
   color: var(--text-muted);
 }
-.kotoba-gateway-row .kotoba-gateway-hint {
+.mithril-gateway-row .mithril-gateway-hint {
   flex-basis: 100%;
   font-size: 12px;
   color: var(--text-muted);

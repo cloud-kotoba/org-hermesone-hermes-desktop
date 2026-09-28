@@ -87,7 +87,7 @@ export const PROVIDERS = {
   ],
 
   labels: {
-    kotoba: "Kotoba Cloud",
+    mithril: "Mithril",
     hermesone: "Hermes One",
     atlascloud: "AtlasCloud",
     novita: "NovitaAI",
@@ -131,20 +131,20 @@ export const PROVIDERS = {
 
   setup: [
     {
-      // Kotoba Cloud — this fork's own inference plane, shown first. OpenAI-
-      // compatible (api.kotoba.cloud/v1), so it routes through `custom` +
-      // base_url like Hermes One; the key is a kotoba.cloud personal API
-      // token (kc_pat_…, issued at kotoba.cloud/account) stored/host-derived
+      // Mithril — this fork's own inference plane, shown first. OpenAI-
+      // compatible (api.mithril.fund/v1), so it routes through `custom` +
+      // base_url like Hermes One; the key is a mithril.fund personal API
+      // token (kc_pat_…, issued at console.mithril.fund/account) stored/host-derived
       // as KOTOBA_API_KEY (see url-key-map.ts).
-      id: "kotoba",
-      name: "Kotoba Cloud",
-      desc: "Kotoba Cloud inference — pay-per-token with ai credit",
+      id: "mithril",
+      name: "Mithril",
+      desc: "Mithril inference — pay-per-token with ai credit",
       tag: "Recommended",
       envKey: "KOTOBA_API_KEY",
-      url: "https://kotoba.cloud/account",
+      url: "https://console.mithril.fund/account",
       placeholder: "kc_pat_...",
       configProvider: "custom",
-      baseUrl: "https://api.kotoba.cloud/v1",
+      baseUrl: "https://api.mithril.fund/v1",
       needsKey: true,
     },
     {
@@ -359,7 +359,7 @@ export interface LocalPreset {
 // OPENAI_COMPATIBLE_BASE_URLS). Distinct from PROVIDERS.setup, which stays the
 // curated first-run set.
 export const PROVIDER_CARDS: { id: string; name: string }[] = [
-  { id: "kotoba", name: "Kotoba Cloud" },
+  { id: "mithril", name: "Mithril" },
   { id: "hermesone", name: "Hermes One" },
   { id: "openrouter", name: "constants.openrouterName" },
   { id: "anthropic", name: "constants.anthropicName" },
@@ -395,7 +395,7 @@ export const PROVIDER_CARDS: { id: string; name: string }[] = [
 // picker routes it consistently (autofill base_url + persist as `custom`).
 // Keep this in sync with LOCAL_PRESETS below.
 export const OPENAI_COMPATIBLE_BASE_URLS: Record<string, string> = {
-  kotoba: "https://api.kotoba.cloud/v1",
+  mithril: "https://api.mithril.fund/v1",
   hermesone: "https://inference.hermesone.org/v1",
   openai: "https://api.openai.com/v1",
   aimlapi: "https://api.aimlapi.com/v1",
@@ -763,14 +763,14 @@ export const SETTINGS_SECTIONS: SectionDef[] = [
   {
     title: "constants.sectionLlmProviders",
     items: [
-      // Kotoba Cloud — first-class + first in the list. Custom under the hood
-      // (routes as `custom` + api.kotoba.cloud), keyed by KOTOBA_API_KEY via
+      // Mithril — first-class + first in the list. Custom under the hood
+      // (routes as `custom` + api.mithril.fund), keyed by KOTOBA_API_KEY via
       // URL_KEY_MAP.
       {
         key: "KOTOBA_API_KEY",
-        label: "constants.kotobaApiKey",
+        label: "constants.mithrilApiKey",
         type: "password",
-        hint: "constants.kotobaHint",
+        hint: "constants.mithrilHint",
       },
       // Hermes One's own inference gateway — second. Custom under the hood
       // (routes as `custom` + inference.hermesone.org), keyed by

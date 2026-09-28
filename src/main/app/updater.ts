@@ -14,7 +14,7 @@ let autoUpdaterInstance: AppUpdater | null = null;
 // Where a person installs a new build by hand. The same origin as the
 // electron-builder.yml `publish.url` feed; it redirects to the current brand's
 // download page, which links the per-arch .dmg files.
-const DOWNLOAD_PAGE_URL = "https://app.kotoba.cloud/";
+const DOWNLOAD_PAGE_URL = "https://app.mithril.fund/";
 
 /**
  * Why macOS auto-update cannot be used for this bundle, or null when it can.

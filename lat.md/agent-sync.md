@@ -1,16 +1,16 @@
 # Cloud agent sync
 
-Syncs desktop profiles (the app's agents) with the owner's [[kotoba-cloud-account|Kotoba Cloud account]]'s cloud agents, bidirectionally, via kotoba.cloud's `/v1/agents` CRUD.
+Syncs desktop profiles (the app's agents) with the owner's [[mithril-account|Mithril account]]'s cloud agents, bidirectionally, via mithril.fund's `/v1/agents` CRUD.
 
 Phase 1 covers the free parts from the backend's `docs/agent-sync.md`: color, persona (`SOUL.md` ↔ `systemPrompt`), memory (`memories/MEMORY.md` ↔ `memory`), and config basics (`model`/`provider` only — never the whole `config.yaml`, so no secrets leave the device). Skills, automations, and sessions are deferred. Deletions never propagate in either direction. Local profile deletion records a device-side exclusion so the retained cloud copy is not automatically restored.
 
 ## The account is the token
 
-The desktop's account IS the personal API token kotoba.cloud minted for it through the device grant, approved by the person's Passkey in their own browser (the grant is not an authority of its own; see [[kotoba-cloud-account#Kotoba Cloud account#Device sign-in]]).
+The desktop's account IS the personal API token mithril.fund minted for it through the device grant, approved by the person's Passkey in their own browser (the grant is not an authority of its own; see [[mithril-account#Mithril account#Device sign-in]]).
 
-[[src/main/agent-sync.ts#cloudAccount]] reads it for the DEFAULT profile through [[src/main/kotoba-cloud-account.ts#kotobaCloudToken]] (keychain store, see [[kotoba-cloud-account#Kotoba Cloud account#Token at rest]]): the token is the credential and, through its principal segment ([[src/main/kotoba-cloud-account.ts#kotobaPrincipalId]]), the `accountId` that keeps one machine's links from being applied against somebody else's agents. Sync is device-wide, so reading it per-profile would make "which agents am I backing up" depend on which agent happened to be selected.
+[[src/main/agent-sync.ts#cloudAccount]] reads it for the DEFAULT profile through [[src/main/mithril-account.ts#mithrilToken]] (keychain store, see [[mithril-account#Mithril account#Token at rest]]): the token is the credential and, through its principal segment ([[src/main/mithril-account.ts#mithrilPrincipalId]]), the `accountId` that keeps one machine's links from being applied against somebody else's agents. Sync is device-wide, so reading it per-profile would make "which agents am I backing up" depend on which agent happened to be selected.
 
-The token must carry the `agents` scope; [[src/main/kotoba-cloud-device.ts#DEVICE_SCOPES]] asks for it alongside `inference`, `billing:read`, `org:read` and `sandbox`. A token issued before that scope existed is refused by name (`token-scope-insufficient`) rather than failing as an outage.
+The token must carry the `agents` scope; [[src/main/mithril-device.ts#DEVICE_SCOPES]] asks for it alongside `inference`, `billing:read`, `org:read` and `sandbox`. A token issued before that scope existed is refused by name (`token-scope-insufficient`) rather than failing as an outage.
 
 Wallets are on this plane too: [[src/main/wallet-sync.ts]] reads `GET /v1/wallets` with the same token, resolved through `cloudAccount()` so the link stamp and the ownership check come from one place.
 
@@ -20,7 +20,7 @@ Wallets are on this plane too: [[src/main/wallet-sync.ts]] reads `GET /v1/wallet
 
 The stored link (a profile's cloud `agentId`) is also read by [[wallet-token-balances#Wallet Sync]] via [[src/main/agent-sync.ts#getLinkedAgentId]], so backend-provisioned wallets can be fetched for the same agent.
 
-Requests are bearer-authenticated with the Kotoba Cloud personal API token from `cloudAccount()` (the DEFAULT profile's, device-wide). Linking keys on the cloud agent's stable `id`; names only match never-synced profiles to their cloud namesakes and are never used to rename.
+Requests are bearer-authenticated with the Mithril personal API token from `cloudAccount()` (the DEFAULT profile's, device-wide). Linking keys on the cloud agent's stable `id`; names only match never-synced profiles to their cloud namesakes and are never used to rename.
 
 New links record both the normalized backend API URL and the owning user id. Links from a different recorded backend are skipped even when user ids coincide. Links are **account-scoped**: every state write records the owning backend user id, and a pass skips (never unlinks, never pushes) profiles whose link belongs to a different account — signing out and back in as someone else must not re-upload the first account's agents to the second. A missing cloud agent only unlinks when the state provably belongs to the current account; legacy states without an owner are adopted when their agent exists in the account's list and skipped with a warning otherwise. Wallet flows apply the same rule through [[src/main/agent-sync.ts#getLinkedAgentAccountId]] — see [[wallet-token-balances#Wallet Sync]].
 

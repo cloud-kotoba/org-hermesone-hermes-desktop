@@ -1,5 +1,5 @@
 export default {
-  title: "歡迎使用 Kotoba",
+  title: "歡迎使用 Mithril",
   subtitle: "你的自我進化 AI 助理，在本機執行，兼顧隱私、能力與持續學習。",
   installIssueTitle: "安裝問題",
   getStarted: "開始使用",

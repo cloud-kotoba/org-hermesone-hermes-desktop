@@ -1,7 +1,7 @@
 // @lat: [[provider-setup#Provider setup#Agent config sync for named providers]]
 import { existsSync, readFileSync } from "fs";
 import { profilePaths, safeWriteFile } from "./utils";
-import { hasStoredKotobaToken } from "./kotoba-cloud-token-store";
+import { hasStoredMithrilToken } from "./mithril-token-store";
 
 /**
  * Bridge between hermes-agent's config.yaml provider sections and the
@@ -326,13 +326,13 @@ export function removeAgentUserProvider(
 // the agent can route it by slug; must match `OPENAI_COMPATIBLE_BASE_URLS`
 // (renderer constants) and the `URL_KEY_MAP` host pattern.
 const HERMESONE_BASE_URL = "https://inference.hermesone.org/v1";
-// Kotoba Cloud's inference endpoint — the same treatment (this fork's own
+// Mithril's inference endpoint — the same treatment (this fork's own
 // plane). Must match `OPENAI_COMPATIBLE_BASE_URLS` and the `URL_KEY_MAP` host.
-const KOTOBA_BASE_URL = "https://api.kotoba.cloud/v1";
+const MITHRIL_BASE_URL = "https://api.mithril.fund/v1";
 
 /**
  * Mirror first-party keyed brands into config.yaml `providers:` so the agent
- * can route them as *named* providers. Today: Kotoba Cloud and Hermes One.
+ * can route them as *named* providers. Today: Mithril and Hermes One.
  *
  * Without this the gateway has no provider row for `inference.hermesone.org`
  * — desktop models on that endpoint are saved as bare `custom` + base URL,
@@ -347,15 +347,15 @@ export function mirrorFirstPartyAgentProviders(profile?: string): void {
   try {
     const { envFile } = profilePaths(profile);
     const env = existsSync(envFile) ? readFileSync(envFile, "utf-8") : "";
-    const kotoba = env.match(/^\s*KOTOBA_API_KEY\s*=\s*(.+)\s*$/m);
-    // The Kotoba Cloud token normally lives in the keychain store, not .env
-    // (kotoba-cloud-token-store.ts); either place means "keyed". The agent
+    const mithril = env.match(/^\s*KOTOBA_API_KEY\s*=\s*(.+)\s*$/m);
+    // The Mithril token normally lives in the keychain store, not .env
+    // (mithril-token-store.ts); either place means "keyed". The agent
     // gets the value in its spawn env (config.ts secureSpawnEnv / readEnv).
-    if ((kotoba && kotoba[1].trim()) || hasStoredKotobaToken(profile)) {
+    if ((mithril && mithril[1].trim()) || hasStoredMithrilToken(profile)) {
       upsertAgentUserProvider(profile, {
-        slug: "kotoba",
-        name: "Kotoba Cloud",
-        baseUrl: KOTOBA_BASE_URL,
+        slug: "mithril",
+        name: "Mithril",
+        baseUrl: MITHRIL_BASE_URL,
         keyEnv: "KOTOBA_API_KEY",
       });
     }

@@ -15,7 +15,7 @@ import {
 import { useI18n } from "../../components/useI18n";
 import BrandLogo from "../../components/common/BrandLogo";
 import OAuthLoginModal from "../../components/OAuthLoginModal";
-import KotobaCloudAccountModal from "../../components/KotobaCloudAccountModal";
+import MithrilAccountModal from "../../components/MithrilAccountModal";
 import ProviderKeysSection from "../../components/ProviderKeysSection";
 import RegistryBrowserModal from "../../components/RegistryBrowserModal";
 import AuxiliaryTasksSection from "../../components/AuxiliaryTasksSection";
@@ -24,9 +24,9 @@ import { KeyRound, Workflow, User } from "../../assets/icons";
 import { ChevronDown, X, LayoutGrid, Eye, EyeOff, Coins } from "lucide-react";
 import { customProviderEnvKey } from "../../../../shared/url-key-map";
 import type {
-  KotobaCloudAccount,
-  KotobaOrgState,
-  KotobaGatewayInfo,
+  MithrilAccount,
+  MithrilOrgState,
+  MithrilGatewayInfo,
 } from "../../../../shared/account";
 
 /** Preview a stored key as prefix + dots + last 4, so a set key is recognisable
@@ -185,22 +185,22 @@ function Providers({
     (typeof OAUTH_PROVIDERS)[number] | null
   >(null);
 
-  // Kotoba Cloud account (this fork): the profile's KOTOBA_API_KEY, proven
-  // against kotoba.cloud on every read. `account` is null when no token is
+  // Mithril account (this fork): the profile's KOTOBA_API_KEY, proven
+  // against mithril.fund on every read. `account` is null when no token is
   // stored; `account.live` false when the stored one no longer verifies.
   // The upstream Hermes One device login (getAccount / ensureHermesOneKey /
   // getHermesOneCredits) still exists in the main process but has no card
-  // here — this app's account is Kotoba Cloud's.
-  const [account, setAccount] = useState<KotobaCloudAccount | null>(null);
-  // The gateway kotoba.cloud provides (per-user Hermes sandbox), read from
-  // app.kotoba.cloud with the desktop's own Passkey session; null = not
+  // here — this app's account is Mithril's.
+  const [account, setAccount] = useState<MithrilAccount | null>(null);
+  // The gateway mithril.fund provides (per-user Hermes sandbox), read from
+  // app.mithril.fund with the desktop's own Passkey session; null = not
   // asked yet. "signed-out" means the session partition holds no sign-in.
-  const [gateway, setGateway] = useState<KotobaGatewayInfo | null>(null);
+  const [gateway, setGateway] = useState<MithrilGatewayInfo | null>(null);
   const [gatewayBusy, setGatewayBusy] = useState(false);
   const [gatewayError, setGatewayError] = useState<string | null>(null);
   const refreshGateway = useCallback(async () => {
     try {
-      setGateway(await window.hermesAPI.getKotobaGatewayStatus());
+      setGateway(await window.hermesAPI.getMithrilGatewayStatus());
     } catch (err) {
       setGateway({
         running: false,
@@ -222,10 +222,10 @@ function Providers({
     setGatewayBusy(true);
     setGatewayError(null);
     try {
-      const r = await window.hermesAPI.launchKotobaGateway();
+      const r = await window.hermesAPI.launchMithrilGateway();
       setGateway(r);
       if (r.error) setGatewayError(r.error);
-      else if (r.url) await window.hermesAPI.openKotobaGateway(r.url);
+      else if (r.url) await window.hermesAPI.openMithrilGateway(r.url);
     } catch (err) {
       setGatewayError((err as Error)?.message || "launch failed");
     } finally {
@@ -236,7 +236,7 @@ function Providers({
     setGatewayBusy(true);
     setGatewayError(null);
     try {
-      const r = await window.hermesAPI.stopKotobaGateway();
+      const r = await window.hermesAPI.stopMithrilGateway();
       if (!r.stopped) setGatewayError(r.error || "stop failed");
       await refreshGateway();
     } finally {
@@ -247,7 +247,7 @@ function Providers({
   useEffect(() => {
     let cancelled = false;
     void window.hermesAPI
-      .getKotobaCloudAccount(profile)
+      .getMithrilAccount(profile)
       .then((a) => {
         if (!cancelled) setAccount(a);
       })
@@ -259,7 +259,7 @@ function Providers({
 
   // Organization switcher: the account's orgs + the persisted billing
   // context. Read once per token (not per balance refresh); null = loading.
-  const [orgs, setOrgs] = useState<KotobaOrgState | null>(null);
+  const [orgs, setOrgs] = useState<MithrilOrgState | null>(null);
   const accountTokenId = account?.tokenId ?? null;
   const accountLive = account?.live ?? false;
   useEffect(() => {
@@ -269,7 +269,7 @@ function Providers({
     }
     let cancelled = false;
     void window.hermesAPI
-      .getKotobaOrgs(profile)
+      .getMithrilOrgs(profile)
       .then((o) => {
         if (!cancelled) setOrgs(o);
       })
@@ -290,7 +290,7 @@ function Providers({
   async function selectBillingContext(handle: string | null): Promise<void> {
     setOrgs((o) => (o ? { ...o, selected: handle } : o));
     try {
-      const next = await window.hermesAPI.selectKotobaOrg(handle, profile);
+      const next = await window.hermesAPI.selectMithrilOrg(handle, profile);
       if (next) setAccount(next);
     } catch {
       /* the chip keeps the previous balance; the selection re-reads on next visit */
@@ -749,11 +749,11 @@ function Providers({
         <>
           <div className="settings-section">
             <div className="settings-section-title">
-              {t("providers.kotobaAccount.sectionTitle")}
+              {t("providers.mithrilAccount.sectionTitle")}
             </div>
             {!account && (
               <p className="settings-section-hint">
-                {t("providers.kotobaAccount.sectionHint")}
+                {t("providers.mithrilAccount.sectionHint")}
               </p>
             )}
             {account ? (
@@ -762,10 +762,10 @@ function Providers({
                   こ
                 </span>
                 <span className="hermes-account-meta">
-                  <span className="hermes-account-name">Kotoba Cloud</span>
+                  <span className="hermes-account-name">Mithril</span>
                   {account.tokenId && (
                     <span className="hermes-account-email">
-                      {t("providers.kotobaAccount.token", {
+                      {t("providers.mithrilAccount.token", {
                         id: account.tokenId,
                       })}
                     </span>
@@ -777,16 +777,16 @@ function Providers({
                     >
                       <span className="hermes-account-dot" aria-hidden="true" />
                       {account.live
-                        ? t("providers.kotobaAccount.connected")
-                        : t("providers.kotobaAccount.notLive")}
+                        ? t("providers.mithrilAccount.connected")
+                        : t("providers.mithrilAccount.notLive")}
                     </span>
                     {account.live && account.balance !== null && (
                       <span
                         className="hermes-account-chip"
-                        title={t("providers.kotobaAccount.creditsTitle")}
+                        title={t("providers.mithrilAccount.creditsTitle")}
                       >
                         <Coins size={11} aria-hidden="true" />
-                        {t("providers.kotobaAccount.credits", {
+                        {t("providers.mithrilAccount.credits", {
                           amount: account.balance.toFixed(2),
                         })}
                       </span>
@@ -797,13 +797,13 @@ function Providers({
                         title={
                           account.error === "org-role-insufficient"
                             ? t(
-                                "providers.kotobaAccount.orgRoleInsufficientTitle",
+                                "providers.mithrilAccount.orgRoleInsufficientTitle",
                               )
-                            : t("providers.kotobaAccount.creditsUnknownTitle")
+                            : t("providers.mithrilAccount.creditsUnknownTitle")
                         }
                       >
                         <Coins size={11} aria-hidden="true" />
-                        {t("providers.kotobaAccount.creditsUnknown")}
+                        {t("providers.mithrilAccount.creditsUnknown")}
                       </span>
                     )}
                     {account.storage === "plaintext" && (
@@ -811,10 +811,10 @@ function Providers({
                         className="hermes-account-chip"
                         title={
                           account.storageWarning ||
-                          t("providers.kotobaAccount.storagePlaintextTitle")
+                          t("providers.mithrilAccount.storagePlaintextTitle")
                         }
                       >
-                        {t("providers.kotobaAccount.storagePlaintext")}
+                        {t("providers.mithrilAccount.storagePlaintext")}
                       </span>
                     )}
                   </span>
@@ -828,46 +828,46 @@ function Providers({
                     )
                   }
                 >
-                  {t("providers.kotobaAccount.manage")}
+                  {t("providers.mithrilAccount.manage")}
                 </button>
                 <button
                   type="button"
                   className="btn btn-secondary btn-sm"
                   onClick={async () => {
-                    await window.hermesAPI.disconnectKotobaCloud(profile);
+                    await window.hermesAPI.disconnectMithril(profile);
                     setAccount(null);
                     const envData = await window.hermesAPI.getEnv(profile);
                     setEnv(envData);
                   }}
                 >
-                  {t("providers.kotobaAccount.signOut")}
+                  {t("providers.mithrilAccount.signOut")}
                 </button>
                 {account.live && (
                   <div
-                    className="kotoba-gateway-row"
-                    title={t("providers.kotobaAccount.contextHint")}
+                    className="mithril-gateway-row"
+                    title={t("providers.mithrilAccount.contextHint")}
                   >
-                    <span className="kotoba-gateway-label">
-                      {t("providers.kotobaAccount.contextLabel")}:
+                    <span className="mithril-gateway-label">
+                      {t("providers.mithrilAccount.contextLabel")}:
                     </span>
                     {orgs === null ? (
-                      <span>{t("providers.kotobaAccount.orgsLoading")}</span>
+                      <span>{t("providers.mithrilAccount.orgsLoading")}</span>
                     ) : orgs.memberships.status === "ok" &&
                       orgs.memberships.orgs.length > 0 ? (
                       <select
                         className="input"
-                        aria-label={t("providers.kotobaAccount.contextLabel")}
+                        aria-label={t("providers.mithrilAccount.contextLabel")}
                         value={orgs.selected ?? ""}
                         onChange={(e) =>
                           void selectBillingContext(e.target.value || null)
                         }
                       >
                         <option value="">
-                          {t("providers.kotobaAccount.contextPersonal")}
+                          {t("providers.mithrilAccount.contextPersonal")}
                         </option>
                         {orgs.memberships.orgs.map((o) => (
                           <option key={o.handle} value={o.handle}>
-                            {t("providers.kotobaAccount.contextOrg", {
+                            {t("providers.mithrilAccount.contextOrg", {
                               handle: o.handle,
                               role: o.role,
                             })}
@@ -878,11 +878,11 @@ function Providers({
                       <>
                         <span>
                           {orgs.selected ??
-                            t("providers.kotobaAccount.contextPersonal")}
+                            t("providers.mithrilAccount.contextPersonal")}
                         </span>
                         {orgs.memberships.status === "ok" && (
                           <span className="settings-section-hint">
-                            {t("providers.kotobaAccount.orgsNone")}
+                            {t("providers.mithrilAccount.orgsNone")}
                           </span>
                         )}
                         {orgs.memberships.status === "reconnect" && (
@@ -890,20 +890,22 @@ function Providers({
                             <span
                               className="settings-section-hint"
                               title={t(
-                                "providers.kotobaAccount.orgsReconnectTitle",
+                                "providers.mithrilAccount.orgsReconnectTitle",
                               )}
                             >
-                              {t("providers.kotobaAccount.orgsReconnect")}
+                              {t("providers.mithrilAccount.orgsReconnect")}
                             </span>
                             <button
                               type="button"
                               className="btn btn-secondary btn-sm"
                               title={t(
-                                "providers.kotobaAccount.orgsReconnectTitle",
+                                "providers.mithrilAccount.orgsReconnectTitle",
                               )}
                               onClick={() => setShowAccountModal(true)}
                             >
-                              {t("providers.kotobaAccount.orgsReconnectAction")}
+                              {t(
+                                "providers.mithrilAccount.orgsReconnectAction",
+                              )}
                             </button>
                           </>
                         )}
@@ -911,10 +913,10 @@ function Providers({
                           <span
                             className="settings-section-hint"
                             title={t(
-                              "providers.kotobaAccount.orgsUnavailableTitle",
+                              "providers.mithrilAccount.orgsUnavailableTitle",
                             )}
                           >
-                            {t("providers.kotobaAccount.orgsUnavailable")}
+                            {t("providers.mithrilAccount.orgsUnavailable")}
                           </span>
                         )}
                         {orgs.memberships.status === "error" && (
@@ -922,42 +924,42 @@ function Providers({
                             className="settings-section-hint"
                             title={orgs.memberships.error}
                           >
-                            {t("providers.kotobaAccount.orgsError")}
+                            {t("providers.mithrilAccount.orgsError")}
                           </span>
                         )}
                       </>
                     )}
                   </div>
                 )}
-                <div className="kotoba-gateway-row">
-                  <span className="kotoba-gateway-label">
-                    {t("providers.kotobaAccount.gatewayLabel")}:
+                <div className="mithril-gateway-row">
+                  <span className="mithril-gateway-label">
+                    {t("providers.mithrilAccount.gatewayLabel")}:
                   </span>
                   <span>
                     {gateway === null
                       ? "…"
                       : gateway.status === "signed-out"
-                        ? t("providers.kotobaAccount.gatewaySignedOut")
+                        ? t("providers.mithrilAccount.gatewaySignedOut")
                         : gateway.status === "unavailable"
-                          ? t("providers.kotobaAccount.gatewayUnavailable")
+                          ? t("providers.mithrilAccount.gatewayUnavailable")
                           : gateway.status === "starting"
-                            ? t("providers.kotobaAccount.gatewayStarting")
+                            ? t("providers.mithrilAccount.gatewayStarting")
                             : gateway.running
-                              ? t("providers.kotobaAccount.gatewayRunning")
-                              : t("providers.kotobaAccount.gatewayStopped")}
+                              ? t("providers.mithrilAccount.gatewayRunning")
+                              : t("providers.mithrilAccount.gatewayStopped")}
                   </span>
                   {gateway && gateway.running && gateway.url && (
                     <button
                       type="button"
                       className="btn btn-primary btn-sm"
-                      title={t("providers.kotobaAccount.gatewayOpenHint")}
+                      title={t("providers.mithrilAccount.gatewayOpenHint")}
                       onClick={() =>
-                        void window.hermesAPI.openKotobaGateway(
+                        void window.hermesAPI.openMithrilGateway(
                           gateway.url as string,
                         )
                       }
                     >
-                      {t("providers.kotobaAccount.gatewayOpen")}
+                      {t("providers.mithrilAccount.gatewayOpen")}
                     </button>
                   )}
                   {gateway && gateway.running && (
@@ -967,7 +969,7 @@ function Providers({
                       disabled={gatewayBusy}
                       onClick={() => void stopGateway()}
                     >
-                      {t("providers.kotobaAccount.gatewayStop")}
+                      {t("providers.mithrilAccount.gatewayStop")}
                     </button>
                   )}
                   {gateway &&
@@ -978,12 +980,12 @@ function Providers({
                         type="button"
                         className="btn btn-primary btn-sm"
                         disabled={gatewayBusy}
-                        title={t("providers.kotobaAccount.gatewayLaunchHint")}
+                        title={t("providers.mithrilAccount.gatewayLaunchHint")}
                         onClick={() => void launchGateway()}
                       >
                         {gatewayBusy
-                          ? t("providers.kotobaAccount.gatewayLaunching")
-                          : t("providers.kotobaAccount.gatewayLaunch")}
+                          ? t("providers.mithrilAccount.gatewayLaunching")
+                          : t("providers.mithrilAccount.gatewayLaunch")}
                       </button>
                     )}
                   {gateway && gateway.status === "signed-out" && (
@@ -992,17 +994,17 @@ function Providers({
                       className="btn btn-secondary btn-sm"
                       onClick={() => setShowAccountModal(true)}
                     >
-                      {t("providers.kotobaAccount.passkey")}
+                      {t("providers.mithrilAccount.passkey")}
                     </button>
                   )}
-                  <span className="kotoba-gateway-hint">
+                  <span className="mithril-gateway-hint">
                     {gatewayError
                       ? gatewayError
                       : gateway &&
                           !gateway.running &&
                           gateway.status !== "signed-out"
-                        ? t("providers.kotobaAccount.gatewayLaunchHint")
-                        : t("providers.kotobaAccount.gatewayOpenHint")}
+                        ? t("providers.mithrilAccount.gatewayLaunchHint")
+                        : t("providers.mithrilAccount.gatewayOpenHint")}
                   </span>
                 </div>
               </div>
@@ -1013,7 +1015,7 @@ function Providers({
                 onClick={() => setShowAccountModal(true)}
               >
                 <User size={14} />
-                {t("providers.kotobaAccount.signIn")}
+                {t("providers.mithrilAccount.signIn")}
               </button>
             )}
           </div>
@@ -1348,13 +1350,13 @@ function Providers({
           )}
 
           {showAccountModal && (
-            <KotobaCloudAccountModal
+            <MithrilAccountModal
               profile={profile}
               onClose={() => setShowAccountModal(false)}
               onConnected={(a) => {
                 setAccount(a);
                 // the token is now the profile's KOTOBA_API_KEY: re-read the
-                // env so the Kotoba Cloud provider card shows it as set
+                // env so the Mithril provider card shows it as set
                 void window.hermesAPI.getEnv(profile).then(setEnv);
               }}
             />

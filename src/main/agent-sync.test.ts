@@ -56,12 +56,12 @@ vi.mock("./utils", () => ({
   },
 }));
 
-// The Kotoba Cloud account is the personal API token: its principal segment
+// The Mithril account is the personal API token: its principal segment
 // is the account identity, and the origin is where /v1/agents lives. Both are
 // read through getters so a case can still vary the backend the way the old
 // Hermes One mock let it (the deleted-link exclusion is keyed by apiUrl).
 // Wallets are still the Hermes One account's plane (there is no wallet API on
-// kotoba.cloud), so wallet-sync keeps reading account-store — and the case
+// mithril.fund), so wallet-sync keeps reading account-store — and the case
 // that checks it waits for an in-flight agent sync needs it signed in.
 vi.mock("./account-store", () => ({
   findAccountProfile: () => (mockState.account ? "default" : null),
@@ -80,14 +80,14 @@ vi.mock("./account-store", () => ({
   getAccessToken: () => mockState.account?.token ?? null,
 }));
 
-vi.mock("./kotoba-cloud-account", () => ({
-  get KOTOBA_CLOUD_ORIGIN() {
-    return mockState.account?.apiUrl ?? "https://kotoba.cloud";
+vi.mock("./mithril-account", () => ({
+  get MITHRIL_ORIGIN() {
+    return mockState.account?.apiUrl ?? "https://mithril.fund";
   },
   // the token lives with the DEFAULT profile (keychain store); a signed-out
   // desktop has none, which is what "signed-out" means for sync
-  kotobaCloudToken: () => mockState.account?.token || null,
-  kotobaPrincipalId: (token: string) =>
+  mithrilToken: () => mockState.account?.token || null,
+  mithrilPrincipalId: (token: string) =>
     token ? (mockState.account?.userId ?? "u1") : null,
 }));
 
@@ -372,7 +372,7 @@ describe("syncAgents", () => {
       model: "m1",
       color: "#123456",
     });
-    // The plane this syncs to is Kotoba Cloud's, not the upstream backend's:
+    // The plane this syncs to is Mithril's, not the upstream backend's:
     // the paths are what a retarget would silently get wrong.
     expect(calls.map((c) => `${c.method} ${c.path}`)).toEqual([
       "GET /v1/agents",

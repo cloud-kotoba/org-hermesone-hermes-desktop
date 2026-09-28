@@ -20,13 +20,13 @@ import {
   startServiceSupervisor,
   stopServiceSupervisorPolling,
 } from "../service-supervisor";
-import { migrateKotobaTokensToKeychain } from "../kotoba-cloud-account";
+import { migrateMithrilTokensToKeychain } from "../mithril-account";
 import { setGatewayPromptParent } from "../gatewayPrompt";
 import { showChatContextMenu } from "./context-menu";
 import { buildMenu } from "./menu";
 import { setupUpdater } from "./updater";
 
-const APP_NAME = process.env.HERMES_DESKTOP_APP_NAME?.trim() || "Kotoba";
+const APP_NAME = process.env.HERMES_DESKTOP_APP_NAME?.trim() || "Mithril";
 const OPEN_DEVTOOLS_ON_START =
   process.env.HERMES_OPEN_DEVTOOLS === "1" ||
   process.env.HERMES_DESKTOP_OPEN_DEVTOOLS === "1";
@@ -117,14 +117,14 @@ export function startMainProcess(): void {
       callback({ responseHeaders });
     });
 
-    // Move a plaintext Kotoba Cloud token out of any profile .env into the
+    // Move a plaintext Mithril token out of any profile .env into the
     // OS keychain before anything spawns an agent (safeStorage needs `ready`).
     try {
-      const moved = migrateKotobaTokensToKeychain();
+      const moved = migrateMithrilTokensToKeychain();
       if (Object.keys(moved).length > 0)
-        console.log("[kotoba-cloud] token migration:", moved);
+        console.log("[mithril] token migration:", moved);
     } catch (err) {
-      console.warn("[kotoba-cloud] token migration failed:", err);
+      console.warn("[mithril] token migration failed:", err);
     }
 
     createWindow();

@@ -19,12 +19,12 @@ import type {
   HermesAccount,
   HermesAccountUser,
   HermesOneCreditsResult,
-  KotobaCloudAccount,
-  KotobaCloudConnectResult,
-  KotobaCloudViewerInfo,
-  KotobaDeviceSignIn,
-  KotobaOrgState,
-  KotobaGatewayInfo,
+  MithrilAccount,
+  MithrilConnectResult,
+  MithrilViewerInfo,
+  MithrilDeviceSignIn,
+  MithrilOrgState,
+  MithrilGatewayInfo,
 } from "../shared/account";
 import type { AgentSyncResult, AgentSyncStatus } from "../shared/agent-sync";
 import type { ConnectionStatusSnapshot } from "../shared/connection-status";
@@ -332,30 +332,26 @@ interface HermesAPI {
   accountLogout: (profile?: string) => Promise<{ success: boolean }>;
   ensureHermesOneKey: (profile?: string) => Promise<EnsureHermesOneKeyResult>;
   getHermesOneCredits: () => Promise<HermesOneCreditsResult>;
-  getKotobaCloudAccount: (
-    profile?: string,
-  ) => Promise<KotobaCloudAccount | null>;
-  connectKotobaCloud: (
+  getMithrilAccount: (profile?: string) => Promise<MithrilAccount | null>;
+  connectMithril: (
     token: string,
     profile?: string,
-  ) => Promise<KotobaCloudConnectResult>;
-  disconnectKotobaCloud: (profile?: string) => Promise<{ success: boolean }>;
-  startKotobaDeviceSignIn: () => Promise<KotobaDeviceSignIn>;
-  waitKotobaDeviceSignIn: (
-    profile?: string,
-  ) => Promise<KotobaCloudConnectResult>;
-  cancelKotobaDeviceSignIn: () => Promise<void>;
-  getKotobaCloudViewer: () => Promise<KotobaCloudViewerInfo>;
-  getKotobaOrgs: (profile?: string) => Promise<KotobaOrgState>;
-  selectKotobaOrg: (
+  ) => Promise<MithrilConnectResult>;
+  disconnectMithril: (profile?: string) => Promise<{ success: boolean }>;
+  startMithrilDeviceSignIn: () => Promise<MithrilDeviceSignIn>;
+  waitMithrilDeviceSignIn: (profile?: string) => Promise<MithrilConnectResult>;
+  cancelMithrilDeviceSignIn: () => Promise<void>;
+  getMithrilViewer: () => Promise<MithrilViewerInfo>;
+  getMithrilOrgs: (profile?: string) => Promise<MithrilOrgState>;
+  selectMithrilOrg: (
     handle: string | null,
     profile?: string,
-  ) => Promise<KotobaCloudAccount | null>;
-  signOutKotobaCloud: () => Promise<void>;
-  getKotobaGatewayStatus: () => Promise<KotobaGatewayInfo>;
-  launchKotobaGateway: () => Promise<KotobaGatewayInfo>;
-  stopKotobaGateway: () => Promise<{ stopped: boolean; error?: string }>;
-  openKotobaGateway: (url: string) => Promise<{ opened: boolean }>;
+  ) => Promise<MithrilAccount | null>;
+  signOutMithril: () => Promise<void>;
+  getMithrilGatewayStatus: () => Promise<MithrilGatewayInfo>;
+  launchMithrilGateway: () => Promise<MithrilGatewayInfo>;
+  stopMithrilGateway: () => Promise<{ stopped: boolean; error?: string }>;
+  openMithrilGateway: (url: string) => Promise<{ opened: boolean }>;
 
   // Cloud agent sync (profiles ↔ signed-in Hermes One account)
   syncAgents: () => Promise<AgentSyncResult>;

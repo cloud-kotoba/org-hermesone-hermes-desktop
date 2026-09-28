@@ -9,7 +9,7 @@ export default {
   nav: {
     groups: {
       general: "一般",
-      hermes: "Kotoba",
+      hermes: "Mithril",
     },
     appearance: "外観",
     language: "言語",

@@ -1,8 +1,8 @@
-// @lat: [[kotoba-cloud-account#Kotoba Cloud account#Passkey session]]
+// @lat: [[mithril-account#Mithril account#Passkey session]]
 /**
- * The desktop's HTTP to kotoba.cloud.
+ * The desktop's HTTP to mithril.fund.
  *
- * Sign-in is the device grant (kotoba-cloud-device.ts): the Passkey happens
+ * Sign-in is the device grant (mithril-device.ts): the Passkey happens
  * in the person's own browser and this process ends up holding a scoped
  * personal API token (KOTOBA_API_KEY, in the OS keychain). Requests that act
  * as the person carry that token as a `bearer`. The cookie partition below is
@@ -13,19 +13,19 @@
  */
 import { net, session, type Session } from "electron";
 
-export const KOTOBA_CLOUD_PARTITION = "persist:kotoba-cloud";
-export const KOTOBA_CLOUD_ORIGIN = "https://kotoba.cloud";
-export const KOTOBA_APP_ORIGIN = "https://app.kotoba.cloud";
-export const KOTOBA_SESSION_COOKIE = "gftd_session";
+export const MITHRIL_PARTITION = "persist:mithril";
+export const MITHRIL_ORIGIN = "https://mithril.fund";
+export const MITHRIL_APP_ORIGIN = "https://app.mithril.fund";
+export const MITHRIL_SESSION_COOKIE = "gftd_session";
 
-export interface KotobaCloudViewer {
+export interface MithrilViewer {
   valid: boolean;
   username?: string | null;
   principalId?: string | null;
   accountDid?: string | null;
 }
 
-export class KotobaCloudSessionError extends Error {
+export class MithrilSessionError extends Error {
   constructor(
     message: string,
     readonly code:
@@ -37,16 +37,16 @@ export class KotobaCloudSessionError extends Error {
     readonly status?: number,
   ) {
     super(message);
-    this.name = "KotobaCloudSessionError";
+    this.name = "MithrilSessionError";
   }
 }
 
-export function getKotobaCloudSession(): Session {
-  return session.fromPartition(KOTOBA_CLOUD_PARTITION);
+export function getMithrilSession(): Session {
+  return session.fromPartition(MITHRIL_PARTITION);
 }
 
-/** One JSON request against kotoba.cloud with the partition's cookies. */
-export function requestKotobaCloudJson(
+/** One JSON request against mithril.fund with the partition's cookies. */
+export function requestMithrilJson(
   url: string,
   options: {
     method?: "GET" | "POST" | "DELETE";
@@ -61,7 +61,7 @@ export function requestKotobaCloudJson(
     const request = net.request({
       method: options.method ?? "GET",
       redirect: "follow",
-      session: getKotobaCloudSession(),
+      session: getMithrilSession(),
       url,
       useSessionCookies: true,
     });
@@ -78,8 +78,8 @@ export function requestKotobaCloudJson(
       settled = true;
       request.abort();
       reject(
-        new KotobaCloudSessionError(
-          `kotoba.cloud did not answer within ${options.timeoutMs ?? 15_000} ms: ${url}`,
+        new MithrilSessionError(
+          `mithril.fund did not answer within ${options.timeoutMs ?? 15_000} ms: ${url}`,
           "request-failed",
         ),
       );
@@ -105,14 +105,14 @@ export function requestKotobaCloudJson(
         if (settled) return;
         settled = true;
         clearTimeout(timer);
-        reject(new KotobaCloudSessionError(error.message, "request-failed"));
+        reject(new MithrilSessionError(error.message, "request-failed"));
       });
     });
     request.on("error", (error: Error) => {
       if (settled) return;
       settled = true;
       clearTimeout(timer);
-      reject(new KotobaCloudSessionError(error.message, "request-failed"));
+      reject(new MithrilSessionError(error.message, "request-failed"));
     });
     if (options.body !== undefined) request.write(JSON.stringify(options.body));
     request.end();
@@ -120,10 +120,10 @@ export function requestKotobaCloudJson(
 }
 
 /** The signed-in viewer, or {valid:false} — never throws on a 401. */
-export async function kotobaCloudViewer(): Promise<KotobaCloudViewer> {
+export async function mithrilViewer(): Promise<MithrilViewer> {
   try {
-    const { status, body } = await requestKotobaCloudJson(
-      `${KOTOBA_CLOUD_ORIGIN}/v1/session`,
+    const { status, body } = await requestMithrilJson(
+      `${MITHRIL_ORIGIN}/v1/session`,
     );
     const v = (body ?? {}) as Record<string, unknown>;
     if (status !== 200 || v.valid !== true) return { valid: false };
@@ -139,6 +139,6 @@ export async function kotobaCloudViewer(): Promise<KotobaCloudViewer> {
 }
 
 /** Forget the session: the partition's cookies go, nothing else. */
-export async function signOutKotobaCloud(): Promise<void> {
-  await getKotobaCloudSession().clearStorageData({ storages: ["cookies"] });
+export async function signOutMithril(): Promise<void> {
+  await getMithrilSession().clearStorageData({ storages: ["cookies"] });
 }

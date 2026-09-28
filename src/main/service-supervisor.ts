@@ -1,6 +1,6 @@
 // @lat: [[service-supervisor]]
 /**
- * Kotoba Desktop supervises the machine's long-running services (tunnels,
+ * Mithril Desktop supervises the machine's long-running services (tunnels,
  * bridges, model servers, loop supervisors) that used to be launchd
  * `KeepAlive` agents. Schedules moved to Hermes cron; a daemon is not a
  * schedule — it needs a supervisor that restarts it when it dies — so that

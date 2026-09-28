@@ -1,5 +1,5 @@
 // @vitest-environment node
-// @lat: [[kotoba-cloud-account#Kotoba Cloud account#Device sign-in]]
+// @lat: [[mithril-account#Mithril account#Device sign-in]]
 
 import { describe, expect, it, vi } from "vitest";
 
@@ -13,7 +13,7 @@ import {
   pollDeviceGrant,
   startDeviceGrant,
   type DeviceGrant,
-} from "./kotoba-cloud-device";
+} from "./mithril-device";
 
 type Answer = { status: number; body: unknown };
 function script(answers: Answer[]): {
@@ -39,9 +39,9 @@ function script(answers: Answer[]): {
 const START = {
   device_code: "d".repeat(64),
   user_code: "ABCD-EFGH",
-  verification_uri: "https://kotoba.cloud/account/device",
+  verification_uri: "https://console.mithril.fund/account/device",
   verification_uri_complete:
-    "https://kotoba.cloud/account/device?user_code=ABCD-EFGH",
+    "https://console.mithril.fund/account/device?user_code=ABCD-EFGH",
   expires_in: 600,
   interval: 5,
 };
@@ -50,12 +50,12 @@ describe("startDeviceGrant", () => {
   it("asks for exactly the desktop's scopes and names the machine", async () => {
     const s = script([{ status: 200, body: START }]);
     const g = await startDeviceGrant(s.request, () => 1_000);
-    expect(s.calls[0].url).toBe("https://kotoba.cloud/v1/account/device/code");
+    expect(s.calls[0].url).toBe("https://mithril.fund/v1/account/device/code");
     const body = s.calls[0].body as { scope: string; device_name: string };
     expect(body.scope.split(" ")).toEqual([...DEVICE_SCOPES]);
     expect(body.scope).toContain("sandbox");
     expect(body.scope).not.toContain("account");
-    expect(body.device_name).toMatch(/^Kotoba desktop · /);
+    expect(body.device_name).toMatch(/^Mithril desktop · /);
     expect(g).toEqual({
       deviceCode: START.device_code,
       userCode: "ABCD-EFGH",

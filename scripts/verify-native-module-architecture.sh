@@ -8,9 +8,9 @@ if [[ "$ARCH" != "x64" && "$ARCH" != "arm64" ]]; then
   exit 2
 fi
 
-APP_ROOT="dist/mac-$ARCH/Kotoba.app"
+APP_ROOT="dist/mac-$ARCH/Mithril.app"
 if [[ ! -d "$APP_ROOT" ]]; then
-  APP_ROOT="dist/mac/Kotoba.app"
+  APP_ROOT="dist/mac/Mithril.app"
 fi
 
 NODE_FILE="$APP_ROOT/Contents/Resources/app.asar.unpacked/node_modules/better-sqlite3/prebuilds/darwin-$ARCH.node"

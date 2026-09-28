@@ -93,15 +93,15 @@ export default {
   syncing: "Syncing…",
   syncSignedOut: "Not synced",
   syncSignedOutHint:
-    "Connect your Kotoba Cloud account on the Providers page to back agents up to the cloud.",
-  syncUpToDate: "Synced with your Kotoba Cloud account",
+    "Connect your Mithril account on the Providers page to back agents up to the cloud.",
+  syncUpToDate: "Synced with your Mithril account",
   syncSummary: "Synced — {{pushed}} pushed, {{pulled}} pulled, {{created}} new",
   syncErrors: "Sync finished with {{count}} error(s)",
   syncUnauthorized: "Session expired — sign in again on the Providers page",
   syncFailed: "Sync failed",
   syncTitle: "Cloud sync",
   syncPaneSubtitle:
-    "Back this agent up to your Kotoba Cloud account and pull changes made on kotoba.cloud.",
+    "Back this agent up to your Mithril account and pull changes made on mithril.fund.",
   syncNow: "Sync now",
   syncAccount: "Account",
   syncLink: "Cloud agent",
@@ -109,7 +109,7 @@ export default {
   syncNotLinked: "Not linked yet — sync to create it",
   syncLastResult: "Last sync",
   syncSignInHint:
-    "Connect your Kotoba Cloud account on the Providers page to sync this agent.",
+    "Connect your Mithril account on the Providers page to sync this agent.",
   syncAction: {
     "up-to-date": "Up to date",
     pushed: "Pushed to cloud",

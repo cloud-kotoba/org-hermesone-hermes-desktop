@@ -33,7 +33,7 @@ function writeState(state: Record<string, unknown>): void {
 }
 
 beforeEach(() => {
-  home = mkdtempSync(join(tmpdir(), "kotoba-multiplex-"));
+  home = mkdtempSync(join(tmpdir(), "mithril-multiplex-"));
   mkdirSync(join(home, "profiles", "akc-blog-i18n"), { recursive: true });
 });
 

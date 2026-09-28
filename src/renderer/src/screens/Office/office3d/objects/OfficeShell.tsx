@@ -2,9 +2,9 @@ import { Suspense, memo, useMemo } from "react";
 import { useGLTF, useTexture } from "@react-three/drei";
 import * as THREE from "three";
 import woodenTableGlbUrl from "../assets/wooden_table.glb?url";
-// This fork: the KOTOBA HQ decal (same 870x170 canvas as upstream's
+// This fork: the MITHRIL HQ decal (same 870x170 canvas as upstream's
 // hermes-one-hq.webp, which stays in the tree for upstream merges).
-import hermesHqLogoUrl from "../assets/images/kotoba-hq.webp";
+import hermesHqLogoUrl from "../assets/images/mithril-hq.webp";
 import { WORLD_W, WORLD_H, SCALE } from "../core/constants";
 import { OFFICE_DOOR_X, OFFICE_DOOR_W } from "../core/cityPlan";
 import { toWorld } from "../core/geometry";
@@ -77,7 +77,7 @@ function NorthWall({ palette }: { palette: WorldPalette }): React.JSX.Element {
   );
 }
 
-/** KOTOBA HQ logo decal on the office's south wall. */
+/** MITHRIL HQ logo decal on the office's south wall. */
 function OfficeLogo(): React.JSX.Element {
   const texture = useTexture(hermesHqLogoUrl, (t) => {
     t.colorSpace = THREE.SRGBColorSpace;

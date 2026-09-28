@@ -11,7 +11,7 @@ import { countRunningExecutions, readProfileCronState } from "./profile-cron";
 
 const dirs: string[] = [];
 function profileDir(): string {
-  const d = mkdtempSync(join(tmpdir(), "kotoba-cron-"));
+  const d = mkdtempSync(join(tmpdir(), "mithril-cron-"));
   dirs.push(d);
   return d;
 }

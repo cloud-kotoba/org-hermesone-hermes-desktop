@@ -1,4 +1,7 @@
 import { app } from "electron";
+// Must stay first: moves the pre-rename Kotoba data directory before any
+// module resolves userData (see the module).
+import "./legacy-kotoba-migration";
 import { applyGpuPreferences, installGpuCrashGuard } from "./gpu-fallback";
 import { startMainProcess } from "./app/start";
 import { loadDotEnvForDev } from "./load-env";

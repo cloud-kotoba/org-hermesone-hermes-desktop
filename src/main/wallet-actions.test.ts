@@ -99,7 +99,7 @@ describe("getWalletPortfolio", () => {
     expect(calls).toHaveLength(0);
   });
 
-  it("maps Kotoba Cloud's portfolio rows to token views", async () => {
+  it("maps Mithril's portfolio rows to token views", async () => {
     const calls = stubFetch({
       tokens: [
         { symbol: "USDC", name: "USD Coin", balance: 12.281, balanceUsd: null },

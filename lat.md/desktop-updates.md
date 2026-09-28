@@ -50,21 +50,20 @@ Electron Builder explicitly unpacks `node_modules/better-sqlite3/prebuilds/*.nod
 
 ### Platform package identity
 
-Linux packages use the space-free `/opt/Kotoba` directory while macOS uses the `Kotoba.app` bundle and executable name (this fork's product name; upstream's were `/opt/HermesOne` and `Hermes One.app`). RPM filenames retain the `.rpm` extension expected by release uploads.
+Linux packages use the space-free `/opt/Mithril` directory while macOS uses the `Mithril.app` bundle and executable name (this fork's product name; upstream's were `/opt/HermesOne` and `Hermes One.app`). RPM filenames retain the `.rpm` extension expected by release uploads.
 
-The global packaging product name supplies Electron Builder's Linux install-directory component. The explicit macOS `executableName` preserves its bundle path, and platform display labels read Kotoba. The Linux sandbox hook targets the same directory. [[tests/packaging-identity.test.ts]] validates the configuration with the installed Electron Builder schema and evaluates its real application metadata and artifact macros.
+The global packaging product name supplies Electron Builder's Linux install-directory component. The explicit macOS `executableName` preserves its bundle path, and platform display labels read Mithril. The Linux sandbox hook targets the same directory. [[tests/packaging-identity.test.ts]] validates the configuration with the installed Electron Builder schema and evaluates its real application metadata and artifact macros.
 
-## Kotoba fork release channel
+## Mithril fork release channel
 
-The Kotoba fork (`cloud-kotoba/org-hermesone-hermes-desktop`) does not use GitHub releases or GitHub Actions: its feed is electron-updater's `generic` provider at `https://app.kotoba.cloud/download/`, and builds are made on a mac-mini.
+The Mithril fork (`cloud-kotoba/org-hermesone-hermes-desktop`) does not use GitHub releases or GitHub Actions: its feed is electron-updater's `generic` provider at `https://app.mithril.fund/download/`, and builds are made on a mac-mini.
 
 `electron-builder.yml` sets `publish.provider: generic` with that URL and `dev-app-update.yml` mirrors it, so a fork build never resolves upstream's `fathah/hermes-desktop` releases (which would update it back into Hermes One). GitHub Actions is disabled on the fork repository (`GET /repos/…/actions/permissions` → `enabled: false`); the workflow files above remain upstream's and do not run here.
 
-Artifacts are content-addressed and published by `scripts/publish-release.cljk` (run under `kbb` from the superproject): each `dist/` file gets a raw sha2-256 CIDv1, is written to the origin plane (R2 `ipld/{cid}`), is hashed back out of the bucket byte-for-byte, and is recorded in `kotoba.app.edn` and in the generated `app-kotoba-cloud.desktop-releases` namespace that `app.kotoba.cloud` serves `/download/{file}` and the `latest*.yml` feeds from. The kotobase archive plane caps objects at 4 MiB, so installers are origin-plane only and the manifest records that refusal.
+Artifacts are content-addressed and published by `scripts/publish-release.cljk` (run under `kbb` from the superproject): each `dist/` file gets a raw sha2-256 CIDv1, is written to the origin plane (R2 `ipld/{cid}`), is hashed back out of the bucket byte-for-byte, and is recorded in `kotoba.app.edn` and in the generated `app-kotoba-cloud.desktop-releases` namespace that `app.mithril.fund` serves `/download/{file}` and the `latest*.yml` feeds from. The kotobase archive plane caps objects at 4 MiB, so installers are origin-plane only and the manifest records that refusal.
 
 ### Unsigned macOS builds
 
 No Developer ID Application certificate exists in the workspace, so fork builds are ad-hoc signed and `notarize` is off; Gatekeeper asks the user to confirm on first launch.
 
 `build/afterPack.js` is wired as `afterPack` and re-signs the packed bundle inside-out with the ad-hoc identity — every Mach-O leaf first (dylibs, `Helpers/chrome_crashpad_handler`, the `.node` addons under `app.asar.unpacked`), then the frameworks and helper apps, then the outer `.app`. Without it electron-builder leaves Electron's stock signature over replaced resources, `codesign --verify --deep --strict` fails with "code has no resources but signature indicates they must be present", and Apple Silicon refuses to launch the app. A framework whose signing fails now fails the build instead of being silently skipped.
-

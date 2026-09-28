@@ -1,6 +1,6 @@
 # Service supervisor
 
-Kotoba Desktop keeps the machine's long-running services up — tunnels, bridges, model servers, loop supervisors that used to be launchd `KeepAlive` agents.
+Mithril Desktop keeps the machine's long-running services up — tunnels, bridges, model servers, loop supervisors that used to be launchd `KeepAlive` agents.
 
 Owner direction 2026-09-23: schedules live in Hermes cron (visible and editable here), not launchd. A daemon is not a schedule: cron can start it, but nothing notices it died until the next fire, so the restart-on-death role moved into the app that is already always running. On the machine that prompted this, 27 of 101 LaunchAgents were `KeepAlive` services.
 

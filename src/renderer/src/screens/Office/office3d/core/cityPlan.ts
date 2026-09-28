@@ -22,7 +22,7 @@ export const BANK_Z = 3.67;
 // The south perimeter wall has a real gap here: agents leaving on trips walk
 // out through it (never through a wall), and the collision system keys its
 // wall colliders off the same numbers. East of centre so it clears the
-// KOTOBA HQ logo decal (which spans x -4..4 on the same wall).
+// MITHRIL HQ logo decal (which spans x -4..4 on the same wall).
 export const OFFICE_DOOR_X = 6.0;
 export const OFFICE_DOOR_W = 2.4;
 
