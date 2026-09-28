@@ -1,6 +1,6 @@
 export default {
   title: "Office",
-  subtitle: "Your agents at work, live in 3D",
+  subtitle: "Your agents at work, live",
   loadingAgents: "Loading agents...",
   noAgents: "No agents found.",
   refresh: "Refresh",
@@ -76,6 +76,8 @@ export default {
   // Walk mode (third-person avatar)
   walkMode: "Walk around",
   walkModeExit: "Exit walk (Esc)",
+  view2d: "2D view",
+  view3d: "3D view",
   walkHint: "WASD / arrows to move · Shift to run · Esc to exit",
   you: "You",
   // Space representatives (bank teller interaction menu)
