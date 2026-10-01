@@ -69,6 +69,14 @@ ships a version at or above ours, merge it and take the higher number.
 content-addressed (`kotoba.app.edn` records the CID of each release file) and
 served from `https://app.mithril.fund/download/<file>`.
 
+**Separate from kotoba.cloud.** Mithril releases are not published through
+`app-kotoba-cloud` (its `desktop_releases.cljk` and `app.kotoba.cloud` feed stay
+on the Kotoba 0.7.12 build). `publish-release.cljk` emits a `mithril.desktop-releases`
+data namespace for the mithril.fund Worker, and takes `--bucket` for a
+Mithril-owned R2 bucket. Open: the artifacts so far sit in the shared
+`kotobase-graph-database-production` bucket, and `app.mithril.fund/download/`
+answers 404 until that Worker serves them.
+
 **Unsigned for now.** No _Developer ID Application_ certificate (macOS) or
 Authenticode certificate (Windows) exists in this workspace — only App Store
 distribution certificates do (`secrets-location-map` → `mobile-publishing.md`).
