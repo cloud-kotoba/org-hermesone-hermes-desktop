@@ -89,6 +89,7 @@ export const PROVIDERS = {
   labels: {
     mithril: "Mithril",
     hermesone: "Hermes One",
+    murakumo: "Murakumo",
     atlascloud: "AtlasCloud",
     novita: "NovitaAI",
     openrouter: "constants.openrouterName",
@@ -160,6 +161,23 @@ export const PROVIDERS = {
       configProvider: "custom",
       baseUrl: "https://inference.hermesone.org/v1",
       needsKey: true,
+    },
+    {
+      // Murakumo — the compute plane (murakumo.cloud) reached directly,
+      // without the Mithril account/billing layer. OpenAI-compatible, so it
+      // routes through `custom` + base_url. No key is required: the control
+      // plane's own relay calls this endpoint with none (research_providers
+      // `infer`); if the plane starts demanding one, flip needsKey and the key
+      // lands in MURAKUMO_API_KEY (see url-key-map.ts).
+      id: "murakumo",
+      name: "Murakumo",
+      desc: "Murakumo fleet inference — direct to api.murakumo.cloud, no account",
+      envKey: "MURAKUMO_API_KEY",
+      url: "https://murakumo.cloud",
+      placeholder: "",
+      configProvider: "custom",
+      baseUrl: "https://api.murakumo.cloud/v1",
+      needsKey: false,
     },
     {
       id: "openrouter",
@@ -361,6 +379,7 @@ export interface LocalPreset {
 export const PROVIDER_CARDS: { id: string; name: string }[] = [
   { id: "mithril", name: "Mithril" },
   { id: "hermesone", name: "Hermes One" },
+  { id: "murakumo", name: "Murakumo" },
   { id: "openrouter", name: "constants.openrouterName" },
   { id: "anthropic", name: "constants.anthropicName" },
   { id: "openai", name: "constants.openaiName" },
@@ -397,6 +416,7 @@ export const PROVIDER_CARDS: { id: string; name: string }[] = [
 export const OPENAI_COMPATIBLE_BASE_URLS: Record<string, string> = {
   mithril: "https://api.mithril.fund/v1",
   hermesone: "https://inference.hermesone.org/v1",
+  murakumo: "https://api.murakumo.cloud/v1",
   openai: "https://api.openai.com/v1",
   aimlapi: "https://api.aimlapi.com/v1",
   mistral: "https://api.mistral.ai/v1",
