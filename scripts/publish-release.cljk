@@ -225,6 +225,16 @@
     (die 2 (str "UNANSWERED — no dist directory: " dist " (build first)")))
   (when-not (.existsSync fs manifest-path)
     (die 2 (str "UNANSWERED — no manifest: " manifest-path)))
+  ;; This fork's publisher must never write into Mithril's own Cloudflare
+  ;; account (fund-mithril, owned by mithril-lang/mithril-fund). Fail closed if
+  ;; the environment or the wrangler project points there.
+  (let [mithril-account "62e1fda53188460698f8c66d3aef59c6"
+        env-account (some-> js/process .-env (aget "CLOUDFLARE_ACCOUNT_ID"))
+        cfg (path/join wrangler-dir "wrangler.jsonc")
+        cfg-text (if (.existsSync fs cfg) (.readFileSync fs cfg "utf8") "")]
+    (when (or (= env-account mithril-account) (str/includes? cfg-text mithril-account))
+      (die 2 (str "REFUSED — target is Mithril's Cloudflare account (" mithril-account
+                  "); this publisher only writes to cloud-kotoba"))))
   (when-not (or dry? (.existsSync fs wrangler-dir))
     (die 2 (str "UNANSWERED — no directory to run wrangler from: " wrangler-dir)))
   (let [files (sort (vec (js->clj (.readdirSync fs dist))))
