@@ -1,7 +1,7 @@
-// @lat: [[mithril-gateway#Mithril gateway]]
+// @lat: [[kotoba-cloud-gateway#Kotoba Cloud gateway]]
 /**
- * The gateway mithril.fund provides: the person's own Hermes running in a
- * per-user Modal Sandbox behind app.mithril.fund (cloud-kotoba/app-hermes-
+ * The gateway kotoba.cloud provides: the person's own Hermes running in a
+ * per-user Modal Sandbox behind app.kotoba.cloud (cloud-kotoba/app-hermes-
  * sandbox "dashboard sessions", 2026-09-22). The worker owns sign-in and
  * billing — POST /v1/sandbox/session launches or resumes (one flat charge),
  * GET reports (free), DELETE stops (free) — and hands back the sandbox's own
@@ -21,23 +21,23 @@
  */
 import { BrowserWindow, session } from "electron";
 import {
-  MITHRIL_APP_ORIGIN,
-  MithrilSessionError,
-  requestMithrilJson,
-} from "./mithril-session";
+  KOTOBA_APP_ORIGIN,
+  KotobaCloudSessionError,
+  requestKotobaCloudJson,
+} from "./kotoba-cloud-session";
 
-export const MITHRIL_GATEWAY_PARTITION = "persist:mithril-gateway";
+export const KOTOBA_GATEWAY_PARTITION = "persist:kotoba-cloud-gateway";
 
 /**
  * What the frame says. The window hosts the in-sandbox Hermes dashboard, so
  * without pinning this the title bar would carry that page's own name.
  */
-export const GATEWAY_WINDOW_TITLE = "Mithril chat";
-const SESSION_URL = `${MITHRIL_APP_ORIGIN}/v1/sandbox/session`;
+export const GATEWAY_WINDOW_TITLE = "Kotoba chat";
+const SESSION_URL = `${KOTOBA_APP_ORIGIN}/v1/sandbox/session`;
 const STARTING_POLL_MS = 5_000;
 const STARTING_DEADLINE_MS = 150_000;
 
-export interface MithrilGatewayStatus {
+export interface KotobaGatewayStatus {
   /** A sandbox is running for this account. */
   running: boolean;
   /** "ready" | "starting" | "stopped" | a server word. */
@@ -49,7 +49,7 @@ export interface MithrilGatewayStatus {
   error?: string;
 }
 
-type Fetcher = typeof requestMithrilJson;
+type Fetcher = typeof requestKotobaCloudJson;
 
 /**
  * The lane's requests carrying `token` as the bearer. Without one they go
@@ -58,14 +58,14 @@ type Fetcher = typeof requestMithrilJson;
  */
 export function gatewayRequestAs(token: string | null): Fetcher {
   return (url, options = {}) =>
-    requestMithrilJson(url, { ...options, bearer: token });
+    requestKotobaCloudJson(url, { ...options, bearer: token });
 }
 
 function fold(
   status: number,
   body: unknown,
   fallback: string,
-): MithrilGatewayStatus {
+): KotobaGatewayStatus {
   const b = (body ?? {}) as Record<string, unknown>;
   const url = typeof b.url === "string" ? b.url : null;
   const sandboxId = typeof b.sandboxId === "string" ? b.sandboxId : null;
@@ -91,9 +91,9 @@ function fold(
 }
 
 /** GET — free; 401 reads as sign-in-required, 404 as the lane not deployed. */
-export async function mithrilGatewayStatus(
-  request: Fetcher = requestMithrilJson,
-): Promise<MithrilGatewayStatus> {
+export async function kotobaGatewayStatus(
+  request: Fetcher = requestKotobaCloudJson,
+): Promise<KotobaGatewayStatus> {
   const { status, body } = await request(SESSION_URL);
   if (status === 401)
     return {
@@ -120,21 +120,21 @@ export async function mithrilGatewayStatus(
  * (402 usage-limit-exceeded, 503 billing-not-configured / sandbox-gateway-
  * unavailable) is returned by name, never retried into a second charge.
  */
-export async function launchMithrilGateway(
-  request: Fetcher = requestMithrilJson,
+export async function launchKotobaGateway(
+  request: Fetcher = requestKotobaCloudJson,
   sleep: (ms: number) => Promise<void> = (ms) =>
     new Promise((r) => setTimeout(r, ms)),
   now: () => number = Date.now,
-): Promise<MithrilGatewayStatus> {
+): Promise<KotobaGatewayStatus> {
   const { status, body } = await request(SESSION_URL, {
     method: "POST",
-    origin: MITHRIL_APP_ORIGIN,
+    origin: KOTOBA_APP_ORIGIN,
     body: {},
     timeoutMs: 120_000,
   });
   if (status === 401)
-    throw new MithrilSessionError(
-      "Sign in to Mithril first.",
+    throw new KotobaCloudSessionError(
+      "Sign in to Kotoba Cloud first.",
       "sign-in-required",
       401,
     );
@@ -143,19 +143,19 @@ export async function launchMithrilGateway(
   const deadline = now() + STARTING_DEADLINE_MS;
   while (state.status === "starting" && now() < deadline) {
     await sleep(STARTING_POLL_MS);
-    state = await mithrilGatewayStatus(request);
+    state = await kotobaGatewayStatus(request);
     if (state.error) return state;
   }
   return state;
 }
 
 /** DELETE — stop now; free. */
-export async function stopMithrilGateway(
-  request: Fetcher = requestMithrilJson,
+export async function stopKotobaGateway(
+  request: Fetcher = requestKotobaCloudJson,
 ): Promise<{ stopped: boolean; error?: string }> {
   const { status, body } = await request(SESSION_URL, {
     method: "DELETE",
-    origin: MITHRIL_APP_ORIGIN,
+    origin: KOTOBA_APP_ORIGIN,
   });
   if (status === 200 || status === 204) return { stopped: true };
   const b = (body ?? {}) as Record<string, unknown>;
@@ -172,13 +172,13 @@ let gatewayWindow: BrowserWindow | null = null;
  * gateway partition (the handoff cookie the gate mints lives there; the
  * renderer never sees it). One window; a second call focuses it.
  */
-export function openMithrilGatewayWindow(
+export function openKotobaGatewayWindow(
   url: string,
   parent?: BrowserWindow | null,
 ): { opened: boolean } {
   const parsed = new URL(url);
   if (parsed.protocol !== "https:") {
-    throw new MithrilSessionError(
+    throw new KotobaCloudSessionError(
       `The gateway URL must be https, got ${parsed.protocol}`,
       "request-failed",
     );
@@ -198,14 +198,14 @@ export function openMithrilGatewayWindow(
       contextIsolation: true,
       nodeIntegration: false,
       sandbox: true,
-      session: session.fromPartition(MITHRIL_GATEWAY_PARTITION),
+      session: session.fromPartition(KOTOBA_GATEWAY_PARTITION),
       webSecurity: true,
     },
   });
   // The page loaded here is the in-sandbox Hermes dashboard, whose document
   // title is "Hermes Agent - Dashboard" — and Electron lets the document title
-  // win over the `title` option above, so the window a Mithril user opened from
-  // Mithril announced itself as something else in the title bar, the window
+  // win over the `title` option above, so the window a Kotoba user opened from
+  // Kotoba announced itself as something else in the title bar, the window
   // menu and the app switcher. Keep our own name on the frame; the page's
   // contents are its own.
   gatewayWindow.on("page-title-updated", (event) => {

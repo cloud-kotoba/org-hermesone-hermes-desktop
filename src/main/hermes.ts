@@ -2753,7 +2753,7 @@ function sendMessageViaCli(
     "VOICE_TOOLS_OPENAI_KEY",
     "TINKER_API_KEY",
     "WANDB_API_KEY",
-    // Mithril: the token is in the keychain store, not the .env the
+    // Kotoba Cloud: the token is in the keychain store, not the .env the
     // agent would load itself — `profileEnv` (readEnv) carries it here.
     "KOTOBA_API_KEY",
   ];

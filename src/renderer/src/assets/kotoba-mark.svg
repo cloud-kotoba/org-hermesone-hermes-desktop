@@ -1,0 +1,23 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1024" height="1024" viewBox="0 0 1024 1024">
+  <defs>
+    <pattern id="plaid" patternUnits="userSpaceOnUse" width="200" height="200">
+      <rect width="200" height="200" fill="#F7A62B"/>
+      <rect x="0" y="0" width="100" height="100" fill="#FFB84D"/>
+      <rect x="100" y="100" width="100" height="100" fill="#FFB84D"/>
+      <rect x="40" y="0" width="30" height="200" fill="#FDC15E" opacity="0.55"/>
+      <rect x="0" y="40" width="200" height="30" fill="#FDC15E" opacity="0.55"/>
+      <rect x="150" y="0" width="16" height="200" fill="#EF8F1C" opacity="0.5"/>
+      <rect x="0" y="150" width="200" height="16" fill="#EF8F1C" opacity="0.5"/>
+    </pattern>
+    <clipPath id="c"><circle cx="512" cy="512" r="470"/></clipPath>
+  </defs>
+  <circle cx="512" cy="512" r="470" fill="#F7A62B"/>
+  <g clip-path="url(#c)" transform="rotate(-6 512 512)">
+    <rect x="-100" y="-100" width="1224" height="1224" fill="url(#plaid)"/>
+  </g>
+  <circle cx="512" cy="512" r="470" fill="none" stroke="#E68A12" stroke-width="10"/>
+  <text x="512" y="530" text-anchor="middle" dominant-baseline="central"
+        font-family="Hiragino Maru Gothic ProN, ヒラギノ丸ゴ ProN W4, sans-serif"
+        font-weight="700" font-size="640" fill="#FFFFFF"
+        stroke="#FFFFFF" stroke-width="28" stroke-linejoin="round">こ</text>
+</svg>

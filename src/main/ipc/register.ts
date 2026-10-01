@@ -107,30 +107,30 @@ import {
   fetchHermesOneCredits,
 } from "../hermesone-provision";
 import {
-  connectMithril,
-  disconnectMithril,
-  mithrilAccount,
-  mithrilToken,
-} from "../mithril-account";
+  connectKotobaCloud,
+  disconnectKotobaCloud,
+  kotobaCloudAccount,
+  kotobaCloudToken,
+} from "../kotoba-cloud-account";
 import {
-  fetchMithrilOrgMemberships,
-  getMithrilOrgSelection,
-  setMithrilOrgSelection,
-} from "../mithril-orgs";
-import { mithrilViewer, signOutMithril } from "../mithril-session";
+  fetchKotobaOrgMemberships,
+  getKotobaOrgSelection,
+  setKotobaOrgSelection,
+} from "../kotoba-cloud-orgs";
+import { kotobaCloudViewer, signOutKotobaCloud } from "../kotoba-cloud-session";
 import {
   pollDeviceGrant,
   startDeviceGrant,
   type DeviceGrant,
-} from "../mithril-device";
+} from "../kotoba-cloud-device";
 import { restartGatewayWhenIdle } from "../gateway-restart-defer";
 import {
   gatewayRequestAs,
-  mithrilGatewayStatus,
-  launchMithrilGateway,
-  openMithrilGatewayWindow,
-  stopMithrilGateway,
-} from "../mithril-gateway";
+  kotobaGatewayStatus,
+  launchKotobaGateway,
+  openKotobaGatewayWindow,
+  stopKotobaGateway,
+} from "../kotoba-cloud-gateway";
 import {
   syncAgents,
   deleteProfileWithSync,
@@ -468,7 +468,7 @@ export interface IpcContext {
   openExternalUrl: (rawUrl: unknown) => void;
 }
 
-const APP_NAME = process.env.HERMES_DESKTOP_APP_NAME?.trim() || "Mithril";
+const APP_NAME = process.env.HERMES_DESKTOP_APP_NAME?.trim() || "Kotoba";
 
 type RemoteSessionBridgeConfig = RemoteSessionConfig;
 
@@ -1055,34 +1055,36 @@ export function registerIpcHandlers(context: IpcContext): void {
   // The signed-in account's AI-credit balance, shown on the account card.
   ipcMain.handle("hermesone-credits", () => fetchHermesOneCredits());
 
-  // Mithril account (this fork): the profile's KOTOBA_API_KEY, proven
-  // against mithril.fund before it is stored, read back with its balance.
-  ipcMain.handle("mithril-account-get", (_event, profile?: string) =>
-    mithrilAccount(profile?.trim() || getActiveProfileNameSync()),
+  // Kotoba Cloud account (this fork): the profile's KOTOBA_API_KEY, proven
+  // against kotoba.cloud before it is stored, read back with its balance.
+  ipcMain.handle("kotoba-cloud-account-get", (_event, profile?: string) =>
+    kotobaCloudAccount(profile?.trim() || getActiveProfileNameSync()),
   );
   ipcMain.handle(
-    "mithril-account-connect",
+    "kotoba-cloud-account-connect",
     async (_event, token: string, profile?: string) => {
       const target = profile?.trim() || getActiveProfileNameSync();
-      const result = await connectMithril(token, target);
+      const result = await connectKotobaCloud(token, target);
       if (result.status === "connected" && isGatewayRunning(target)) {
         void restartGatewayWhenIdle(target, restartGateway);
       }
       return result;
     },
   );
-  ipcMain.handle("mithril-account-disconnect", (_event, profile?: string) =>
-    disconnectMithril(profile?.trim() || getActiveProfileNameSync()),
+  ipcMain.handle(
+    "kotoba-cloud-account-disconnect",
+    (_event, profile?: string) =>
+      disconnectKotobaCloud(profile?.trim() || getActiveProfileNameSync()),
   );
 
-  // Mithril sign-in (this fork): the device grant. `start` asks
-  // mithril.fund for a code pair and opens the approval page in the default
+  // Kotoba Cloud sign-in (this fork): the device grant. `start` asks
+  // kotoba.cloud for a code pair and opens the approval page in the default
   // browser, where the person signs in with their Passkey and approves the
   // code; `wait` polls until the scoped token arrives and stores it as the
   // profile's KOTOBA_API_KEY. The device code stays in this process — the
   // renderer only ever sees the user code it shows.
   let pendingDevice: { grant: DeviceGrant; cancelled: boolean } | null = null;
-  ipcMain.handle("mithril-device-start", async () => {
+  ipcMain.handle("kotoba-cloud-device-start", async () => {
     if (pendingDevice) pendingDevice.cancelled = true;
     const grant = await startDeviceGrant();
     pendingDevice = { grant, cancelled: false };
@@ -1094,82 +1096,87 @@ export function registerIpcHandlers(context: IpcContext): void {
       expiresAt: grant.expiresAt,
     };
   });
-  ipcMain.handle("mithril-device-wait", async (_event, profile?: string) => {
-    const pending = pendingDevice;
-    if (!pending)
-      return {
-        status: "refused" as const,
-        error: "No sign-in is in progress.",
-      };
-    const target = profile?.trim() || getActiveProfileNameSync();
-    try {
-      const token = await pollDeviceGrant(pending.grant, {
-        cancelled: () => pending.cancelled,
-      });
-      const result = await connectMithril(token, target);
-      if (result.status === "connected" && isGatewayRunning(target)) {
-        void restartGatewayWhenIdle(target, restartGateway);
+  ipcMain.handle(
+    "kotoba-cloud-device-wait",
+    async (_event, profile?: string) => {
+      const pending = pendingDevice;
+      if (!pending)
+        return {
+          status: "refused" as const,
+          error: "No sign-in is in progress.",
+        };
+      const target = profile?.trim() || getActiveProfileNameSync();
+      try {
+        const token = await pollDeviceGrant(pending.grant, {
+          cancelled: () => pending.cancelled,
+        });
+        const result = await connectKotobaCloud(token, target);
+        if (result.status === "connected" && isGatewayRunning(target)) {
+          void restartGatewayWhenIdle(target, restartGateway);
+        }
+        return result;
+      } catch (err) {
+        return {
+          status: "refused" as const,
+          error: err instanceof Error ? err.message : String(err),
+        };
+      } finally {
+        if (pendingDevice === pending) pendingDevice = null;
       }
-      return result;
-    } catch (err) {
-      return {
-        status: "refused" as const,
-        error: err instanceof Error ? err.message : String(err),
-      };
-    } finally {
-      if (pendingDevice === pending) pendingDevice = null;
-    }
-  });
-  ipcMain.handle("mithril-device-cancel", () => {
+    },
+  );
+  ipcMain.handle("kotoba-cloud-device-cancel", () => {
     if (pendingDevice) pendingDevice.cancelled = true;
   });
   // Organization switcher (this fork): the account's orgs from
   // GET /v1/org/memberships and the persisted billing context. A selection
   // the account no longer belongs to falls back to Personal — only when the
   // list was actually read (a 403/404 must not clear it).
-  ipcMain.handle("mithril-orgs-get", async (_event, profile?: string) => {
+  ipcMain.handle("kotoba-cloud-orgs-get", async (_event, profile?: string) => {
     const target = profile?.trim() || getActiveProfileNameSync();
-    const memberships = await fetchMithrilOrgMemberships(mithrilToken(target));
-    let selected = getMithrilOrgSelection(target);
+    const memberships = await fetchKotobaOrgMemberships(
+      kotobaCloudToken(target),
+    );
+    let selected = getKotobaOrgSelection(target);
     if (
       selected &&
       memberships.status === "ok" &&
       !memberships.orgs.some((o) => o.handle === selected)
     ) {
-      selected = setMithrilOrgSelection(target, null);
+      selected = setKotobaOrgSelection(target, null);
     }
     return { memberships, selected };
   });
   ipcMain.handle(
-    "mithril-org-select",
+    "kotoba-cloud-org-select",
     (_event, handle: string | null, profile?: string) => {
       const target = profile?.trim() || getActiveProfileNameSync();
-      setMithrilOrgSelection(
+      setKotobaOrgSelection(
         target,
         typeof handle === "string" && handle ? handle : null,
       );
-      return mithrilAccount(target);
+      return kotobaCloudAccount(target);
     },
   );
-  ipcMain.handle("mithril-viewer", () => mithrilViewer());
-  ipcMain.handle("mithril-sign-out", () => signOutMithril());
+  ipcMain.handle("kotoba-cloud-viewer", () => kotobaCloudViewer());
+  ipcMain.handle("kotoba-cloud-sign-out", () => signOutKotobaCloud());
 
-  // The gateway mithril.fund provides: launch / status / stop the person's
-  // hosted Hermes (app.mithril.fund /v1/sandbox/session) and open it.
+  // The gateway kotoba.cloud provides: launch / status / stop the person's
+  // hosted Hermes (app.kotoba.cloud /v1/sandbox/session) and open it.
   // As the person: the active profile's token as the bearer.
   const gatewayRequest = (): ReturnType<typeof gatewayRequestAs> =>
-    gatewayRequestAs(mithrilToken(getActiveProfileNameSync()));
-  ipcMain.handle("mithril-gateway-status", () =>
-    mithrilGatewayStatus(gatewayRequest()),
+    gatewayRequestAs(kotobaCloudToken(getActiveProfileNameSync()));
+  ipcMain.handle("kotoba-cloud-gateway-status", () =>
+    kotobaGatewayStatus(gatewayRequest()),
   );
-  ipcMain.handle("mithril-gateway-launch", () =>
-    launchMithrilGateway(gatewayRequest()),
+  ipcMain.handle("kotoba-cloud-gateway-launch", () =>
+    launchKotobaGateway(gatewayRequest()),
   );
-  ipcMain.handle("mithril-gateway-stop", () =>
-    stopMithrilGateway(gatewayRequest()),
+  ipcMain.handle("kotoba-cloud-gateway-stop", () =>
+    stopKotobaGateway(gatewayRequest()),
   );
-  ipcMain.handle("mithril-gateway-open", (_event, url: string) =>
-    openMithrilGatewayWindow(String(url), context.getMainWindow()),
+  ipcMain.handle("kotoba-cloud-gateway-open", (_event, url: string) =>
+    openKotobaGatewayWindow(String(url), context.getMainWindow()),
   );
 
   // Cloud agent sync — reconciles local profiles with the signed-in Hermes One

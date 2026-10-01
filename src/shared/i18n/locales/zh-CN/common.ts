@@ -1,5 +1,5 @@
 export default {
-  appName: "Mithril",
+  appName: "Kotoba",
   continue: "继续",
   cancel: "取消",
   retry: "重试",
