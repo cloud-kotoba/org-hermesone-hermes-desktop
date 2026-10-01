@@ -69,13 +69,15 @@ ships a version at or above ours, merge it and take the higher number.
 content-addressed (`kotoba.app.edn` records the CID of each release file) and
 served from `https://app.mithril.fund/download/<file>`.
 
-**Separate from kotoba.cloud.** Mithril releases are not published through
-`app-kotoba-cloud` (its `desktop_releases.cljk` and `app.kotoba.cloud` feed stay
-on the Kotoba 0.7.12 build). `publish-release.cljk` emits a `mithril.desktop-releases`
-data namespace for the mithril.fund Worker, and takes `--bucket` for a
-Mithril-owned R2 bucket. Open: the artifacts so far sit in the shared
-`kotobase-graph-database-production` bucket, and `app.mithril.fund/download/`
-answers 404 until that Worker serves them.
+**Scope of this fork.** The Mithril product lives in `mithril-lang`
+(`mithril-lang/mithril-desktop` for the app, `mithril-lang/mithril-fund` for
+`app.mithril.fund`, `auth.mithril.fund`, the API) on its own Cloudflare account.
+Nothing here publishes into it: `publish-release.cljk` writes only to the
+cloud-kotoba account and refuses to run if `CLOUDFLARE_ACCOUNT_ID` or the
+wrangler project is Mithril's account. Releases published from this fork
+(0.7.14) sit in cloud-kotoba's `kotobase-graph-database-production` bucket and
+are not served by `app.mithril.fund`. It also does not feed `app.kotoba.cloud`
+(`app-kotoba-cloud` stays on the Kotoba 0.7.12 build).
 
 **Unsigned for now.** No _Developer ID Application_ certificate (macOS) or
 Authenticode certificate (Windows) exists in this workspace — only App Store
