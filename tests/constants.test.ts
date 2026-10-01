@@ -12,6 +12,8 @@ import {
   providerNameForEnvKey,
   providerRouteForEnvKey,
 } from "../src/renderer/src/constants";
+import { expectedEnvKeyForUrl } from "../src/shared/url-key-map";
+import DEFAULT_MODELS from "../src/main/default-models";
 
 // ─── PROVIDERS ──────────────────────────────────────────
 
@@ -368,5 +370,27 @@ describe("THEME_OPTIONS", () => {
   it("has system, light, dark", () => {
     const values = THEME_OPTIONS.map((t) => t.value);
     expect(values).toEqual(["system", "light", "dark"]);
+  });
+});
+
+describe("Murakumo direct provider", () => {
+  it("is a keyless OpenAI-compatible setup card on api.murakumo.cloud", () => {
+    const card = PROVIDERS.setup.find((p) => p.id === "murakumo")!;
+    expect(card.configProvider).toBe("custom");
+    expect(card.baseUrl).toBe("https://api.murakumo.cloud/v1");
+    expect(card.needsKey).toBe(false);
+    expect(OPENAI_COMPATIBLE_BASE_URLS.murakumo).toBe(card.baseUrl);
+    expect(PROVIDERS.labels.murakumo).toBe("Murakumo");
+  });
+
+  it("keys the host to MURAKUMO_API_KEY and seeds the ready model", () => {
+    expect(expectedEnvKeyForUrl("https://api.murakumo.cloud/v1")).toBe(
+      "MURAKUMO_API_KEY",
+    );
+    expect(
+      DEFAULT_MODELS.filter((m) => m.provider === "murakumo").map(
+        (m) => m.model,
+      ),
+    ).toEqual(["murakumo/free"]);
   });
 });
