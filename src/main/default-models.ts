@@ -93,6 +93,17 @@ const DEFAULT_MODELS: DefaultModel[] = [
     model: "Qwen/Qwen3-235B-A22B-Instruct-2507",
     baseUrl: "",
   },
+
+  // ── Murakumo (direct, no account) ────────────────────────────────────
+  // `murakumo/free` is an alias of the ready chat model (`mishima`); the
+  // catalog's other chat model is not ready. A reasoning model: keep
+  // max_tokens well above ~8 or it ends mid-thought with null content.
+  {
+    name: "Murakumo Free",
+    provider: "murakumo",
+    model: "murakumo/free",
+    baseUrl: "",
+  },
 ];
 
 export default DEFAULT_MODELS;
