@@ -1,5 +1,5 @@
 // @vitest-environment node
-// @lat: [[mithril-gateway#Mithril gateway#Tests]]
+// @lat: [[kotoba-cloud-gateway#Kotoba Cloud gateway#Tests]]
 
 import { describe, expect, it, vi } from "vitest";
 
@@ -12,10 +12,10 @@ vi.mock("electron", () => ({
 }));
 
 import {
-  mithrilGatewayStatus,
-  launchMithrilGateway,
-  stopMithrilGateway,
-} from "./mithril-gateway";
+  kotobaGatewayStatus,
+  launchKotobaGateway,
+  stopKotobaGateway,
+} from "./kotoba-cloud-gateway";
 
 type Call = { url: string; method: string; origin?: string; body?: unknown };
 function script(answers: Array<{ status: number; body: unknown }>): {
@@ -42,14 +42,14 @@ function script(answers: Array<{ status: number; body: unknown }>): {
     },
   };
 }
-const SESSION = "https://app.mithril.fund/v1/sandbox/session";
+const SESSION = "https://app.kotoba.cloud/v1/sandbox/session";
 const READY = {
   url: "https://x--dash.modal.run/?hs=abc",
   sandboxId: "sb-1",
   status: "ready",
 };
 
-describe("mithrilGatewayStatus", () => {
+describe("kotobaGatewayStatus", () => {
   it("reads a stopped lane, a running one, and the two refusals by name", async () => {
     const s = script([
       { status: 200, body: { running: false } },
@@ -57,24 +57,24 @@ describe("mithrilGatewayStatus", () => {
       { status: 401, body: { error: "sign-in-required" } },
       { status: 404, body: {} },
     ]);
-    expect(await mithrilGatewayStatus(s.request)).toEqual({
+    expect(await kotobaGatewayStatus(s.request)).toEqual({
       running: false,
       status: "stopped",
       url: null,
       sandboxId: null,
     });
-    expect(await mithrilGatewayStatus(s.request)).toEqual({
+    expect(await kotobaGatewayStatus(s.request)).toEqual({
       running: true,
       status: "ready",
       url: READY.url,
       sandboxId: "sb-1",
     });
-    expect(await mithrilGatewayStatus(s.request)).toMatchObject({
+    expect(await kotobaGatewayStatus(s.request)).toMatchObject({
       running: false,
       status: "signed-out",
       error: "sign-in-required",
     });
-    expect(await mithrilGatewayStatus(s.request)).toMatchObject({
+    expect(await kotobaGatewayStatus(s.request)).toMatchObject({
       status: "unavailable",
       error: "sandbox-session-not-deployed",
     });
@@ -84,10 +84,10 @@ describe("mithrilGatewayStatus", () => {
   });
 });
 
-describe("launchMithrilGateway", () => {
+describe("launchKotobaGateway", () => {
   it("POSTs with the app origin and a JSON body, and returns a ready sandbox", async () => {
     const s = script([{ status: 200, body: READY }]);
-    const r = await launchMithrilGateway(s.request);
+    const r = await launchKotobaGateway(s.request);
     expect(r).toEqual({
       running: true,
       status: "ready",
@@ -98,7 +98,7 @@ describe("launchMithrilGateway", () => {
       {
         url: SESSION,
         method: "POST",
-        origin: "https://app.mithril.fund",
+        origin: "https://app.kotoba.cloud",
         body: {},
       },
     ]);
@@ -112,7 +112,7 @@ describe("launchMithrilGateway", () => {
     ]);
     const slept: number[] = [];
     let t = 0;
-    const r = await launchMithrilGateway(
+    const r = await launchKotobaGateway(
       s.request,
       async (ms) => {
         slept.push(ms);
@@ -136,7 +136,7 @@ describe("launchMithrilGateway", () => {
       ...answers,
     ]);
     let t = 0;
-    const r = await launchMithrilGateway(
+    const r = await launchKotobaGateway(
       s.request,
       async (ms) => {
         t += ms;
@@ -151,7 +151,7 @@ describe("launchMithrilGateway", () => {
     const s = script([
       { status: 402, body: { error: "usage-limit-exceeded" } },
     ]);
-    const r = await launchMithrilGateway(s.request);
+    const r = await launchKotobaGateway(s.request);
     expect(r).toMatchObject({
       running: false,
       status: "refused",
@@ -162,26 +162,26 @@ describe("launchMithrilGateway", () => {
 
   it("throws sign-in-required on a 401 so the card can offer the Passkey window", async () => {
     const s = script([{ status: 401, body: { error: "sign-in-required" } }]);
-    await expect(launchMithrilGateway(s.request)).rejects.toMatchObject({
+    await expect(launchKotobaGateway(s.request)).rejects.toMatchObject({
       code: "sign-in-required",
     });
   });
 });
 
-describe("stopMithrilGateway", () => {
+describe("stopKotobaGateway", () => {
   it("DELETEs with the app origin; a refusal comes back by name", async () => {
     const s = script([
       { status: 200, body: { running: false } },
       { status: 503, body: { error: "sandbox-gateway-unavailable" } },
     ]);
-    expect(await stopMithrilGateway(s.request)).toEqual({ stopped: true });
-    expect(await stopMithrilGateway(s.request)).toEqual({
+    expect(await stopKotobaGateway(s.request)).toEqual({ stopped: true });
+    expect(await stopKotobaGateway(s.request)).toEqual({
       stopped: false,
       error: "sandbox-gateway-unavailable",
     });
     expect(s.calls[0]).toMatchObject({
       method: "DELETE",
-      origin: "https://app.mithril.fund",
+      origin: "https://app.kotoba.cloud",
     });
   });
 });
