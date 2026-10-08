@@ -33,7 +33,7 @@ In `hy` mode, `startGatewayDetailed` spawns [[src/main/kotoba-gateway.ts#kotobaG
 
 The main window gets `--kotoba-gateway-runtime=<runtime>` as an extra argument, and preload exposes it as `window.electron.kotobaGatewayRuntime`. In local mode with the `auto` transport, [[src/renderer/src/screens/Chat/hooks/useDashboardChatTransport.ts#localChatTransportPreference]] picks the `/v1` transport, so chat reaches the Hy gateway rather than the upstream dashboard WebSocket. Picking `dashboard` explicitly still works.
 
-Packaged builds ship `gateway-hy/` (with `.deps`) as `extraResources`.
+Packaged builds ship `gateway-hy/` (with `.deps`) as `extraResources`. The `prebuild` npm hook vendors the pinned Hy into `.deps` with whatever Python the build machine has (Hy is pure Python), so the release workflows need no change.
 
 ## Python ↔ Hy mapping
 

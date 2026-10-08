@@ -26,6 +26,7 @@
     "dev:sandbox": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/hermes-sandbox.ps1 dev",
     "sandbox:sync-config": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/hermes-sandbox.ps1 sync-config",
     "dev:fresh": "HERMES_HOME=$(mktemp -d -t hermes-fresh) electron-vite dev",
+    "prebuild": "node scripts/gateway-hy.mjs deps",
     "build": "npm run typecheck && electron-vite build",
     "postinstall": "install-electron --no && electron-builder install-app-deps",
     "build:unpack": "npm run build && electron-builder --dir",

@@ -5,6 +5,7 @@
 //   start  run the gateway against the local Hermes Agent install
 //   hy2py  write the Python view of the Hy sources to gateway-hy/py/
 import { spawnSync } from "node:child_process";
+import { existsSync } from "node:fs";
 import { homedir } from "node:os";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -24,23 +25,44 @@ const python =
 // eslint-disable-next-line @typescript-eslint/explicit-function-return-type
 function run(cmd, args, opts = {}) {
   const r = spawnSync(cmd, args, { stdio: "inherit", ...opts });
-  if (r.error) throw r.error;
+  if (r.error) {
+    // A missing tool (e.g. no uv) is a failed step the caller can fall back from.
+    console.error(`${cmd}: ${r.error.message}`);
+    return 1;
+  }
   return r.status ?? 1;
 }
 
 const cmd = process.argv[2];
 let code = 0;
 if (cmd === "deps") {
+  // Hy and funcparserlib are pure Python, so any Python can vendor them:
+  // the Hermes interpreter locally, plain python3 on a build machine.
+  const target = join(gw, ".deps");
+  const req = join(gw, "requirements.txt");
+  const py = existsSync(python) ? python : "python3";
   code = run("uv", [
     "pip",
     "install",
     "--python",
-    python,
+    py,
     "--target",
-    join(gw, ".deps"),
+    target,
     "-r",
-    join(gw, "requirements.txt"),
+    req,
   ]);
+  if (code !== 0) {
+    code = run(py, [
+      "-m",
+      "pip",
+      "install",
+      "--no-compile",
+      "--target",
+      target,
+      "-r",
+      req,
+    ]);
+  }
 } else if (cmd === "test") {
   code = run(
     python,
