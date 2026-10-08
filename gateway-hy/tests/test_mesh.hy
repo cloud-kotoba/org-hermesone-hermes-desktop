@@ -5,7 +5,7 @@
         urllib.request [Request urlopen]
         urllib.error [HTTPError])
 (import kotoba_gateway.backend [EchoBackend]
-        kotoba_gateway.identity [NodeIdentity canonical signed? verify-request]
+        kotoba_gateway.identity [NodeIdentity canonical is-signed verify-request]
         kotoba_gateway.ledger [BlockStore Ledger cid-of]
         kotoba_gateway.server [make-server])
 
@@ -49,10 +49,10 @@
   ;; @lat: [[gateway-hy#Tests#Manifest is self-certifying]]
   (defn test-manifest-is-self-certifying [self]
     (setv m (.call self.a "GET" "/.well-known/kotoba-node" :key None))
-    (.assertTrue self (signed? m))
+    (.assertTrue self (is-signed m))
     (.assertEqual self (get m "did") self.a.did)
     (setv (get m "model") "forged")
-    (.assertFalse self (signed? m)))
+    (.assertFalse self (is-signed m)))
 
   ;; @lat: [[gateway-hy#Tests#Untrusted nodes are refused]]
   (defn test-untrusted-nodes-are-refused [self]
@@ -105,7 +105,7 @@
     (introduce self.b self.c)
     (setv learned (.gossip-once self.a.gateway.peers))
     (.assertIn self self.c.did learned)
-    (.assertFalse self (.trusted? self.a.gateway.peers self.c.did)))
+    (.assertFalse self (.is-trusted self.a.gateway.peers self.c.did)))
 
   ;; @lat: [[gateway-hy#Tests#Delegation is one hop and local only]]
   (defn test-delegation-is-local-only [self]

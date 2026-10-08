@@ -10,7 +10,7 @@
 (import json os threading time
         urllib.request [Request urlopen]
         urllib.error [HTTPError URLError]
-        kotoba_gateway.identity [signed?])
+        kotoba_gateway.identity [is-signed])
 
 (setv MAX-PEERS 256
       HTTP-TIMEOUT 10
@@ -58,7 +58,7 @@
 
   ;; -- trust --
 
-  (defn trusted? [self did] (in did self.trusted))
+  (defn is-trusted [self did] (in did self.trusted))
 
   (defn trust [self did]
     (.add self.trusted did)
@@ -81,7 +81,7 @@
       (with [res (._request self "GET" (+ (normalize-url url) MANIFEST-PATH) :signed False)]
         (setv manifest (json.loads (.read res))))
       (except [[HTTPError URLError OSError ValueError]] (return None)))
-    (if (and (signed? manifest)
+    (if (and (is-signed manifest)
              (= (.get manifest "type") "kotoba.node")
              (= (.get manifest "did") (.get manifest "signer")))
         manifest

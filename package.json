@@ -13,6 +13,7 @@
     "test:gateway": "node scripts/gateway-hy.mjs test",
     "gateway:deps": "node scripts/gateway-hy.mjs deps",
     "gateway:start": "node scripts/gateway-hy.mjs start",
+    "gateway:hy2py": "node scripts/gateway-hy.mjs hy2py",
     "test:coverage": "vitest run --coverage",
     "test:sandbox": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/hermes-sandbox.ps1 test",
     "test:live-visual": "node scripts/drive-live-regression-suite.js",

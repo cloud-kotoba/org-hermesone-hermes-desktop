@@ -8,7 +8,7 @@
 ;; the source of truth, the content is.
 
 (import base64 hashlib json os threading time
-        kotoba_gateway.identity [canonical signed?])
+        kotoba_gateway.identity [canonical is-signed])
 
 (setv CID-PREFIX (bytes [0x01 0xa9 0x02 0x12 0x20])  ; v1, dag-json (0x0129), sha2-256, 32 bytes
       CID-RE-CHARS (set "abcdefghijklmnopqrstuvwxyz234567"))
@@ -19,7 +19,7 @@
                                    "ascii"))
                   "=")))
 
-(defn valid-cid? [cid]
+(defn is-valid-cid [cid]
   (and (isinstance cid str) (.startswith cid "b") (< 50 (len cid) 70)
        (.issubset (set (cut cid 1 None)) CID-RE-CHARS)))
 
@@ -44,7 +44,7 @@
 
   (defn get-bytes [self cid]
     "Block bytes, or None when absent or corrupted (hash mismatch)."
-    (when (not (valid-cid? cid)) (return None))
+    (when (not (is-valid-cid cid)) (return None))
     (setv path (._path self cid))
     (when (not (os.path.isfile path)) (return None))
     (with [f (open path "rb")] (setv data (.read f)))
@@ -54,7 +54,7 @@
     (setv data (.get-bytes self cid))
     (if (is data None) None (json.loads data)))
 
-  (defn has? [self cid] (is-not (.get-bytes self cid) None)))
+  (defn has-block [self cid] (is-not (.get-bytes self cid) None)))
 
 (defclass Ledger []
   "Per-session signed hash chains over a BlockStore."
@@ -113,7 +113,7 @@
     "Replicate a peer's chain: verify `head`, pull missing blocks via
     `fetch-block(cid) -> bytes|None`, check every link, then take the head.
     Returns the number of blocks fetched; raises ValueError on any mismatch."
-    (when (not (and (signed? head) (= (.get head "type") "kotoba.head")))
+    (when (not (and (is-signed head) (= (.get head "type") "kotoba.head")))
       (raise (ValueError "head signature is invalid")))
     (setv session (get head "session")
           cid (get head "cid")

@@ -61,7 +61,7 @@
     True
     (except [[InvalidSignature ValueError TypeError]] False)))
 
-(defn signed? [document]
+(defn is-signed [document]
   "Verify a document signed by `sign-document`: {..., \"signer\" did, \"signature\" sig}."
   (and (isinstance document dict)
        (isinstance (.get document "signature") str)

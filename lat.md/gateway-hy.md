@@ -35,6 +35,64 @@ The main window gets `--kotoba-gateway-runtime=<runtime>` as an extra argument, 
 
 Packaged builds ship `gateway-hy/` (with `.deps`) as `extraResources`.
 
+## Python ↔ Hy mapping
+
+How the Hy sources relate to Python in both directions: the names Python callers see, the generated Python view, and the upstream Hermes Python each piece mirrors.
+
+Hy compiles to Python AST, so the gateway *is* a set of Python modules once `import hy` has run. Python code imports it directly (`from kotoba_gateway.identity import is_signed`), and Hy code imports Hermes directly (`(import run_agent [AIAgent])`). There is no FFI layer.
+
+### Naming rules
+
+Hy names reach Python through Hy's mangling. The gateway restricts itself to the subset that maps to plain snake_case.
+
+| Hy | Python |
+|---|---|
+| `run-event`, `self.run-id` | `run_event`, `self.run_id` |
+| `TERMINAL-STATUSES` | `TERMINAL_STATUSES` |
+| `is-signed`, `is-trusted`, `is-valid-cid` (predicates) | `is_signed`, `is_trusted`, `is_valid_cid` |
+| `(make-server h p b k :state-dir d)` | `make_server(h, p, b, k, state_dir=d)` |
+| `#** kw`, `#* args` | `**kw`, `*args` |
+| `f"{e !r}"` (space before the conversion) | `f"{e!r}"` |
+
+Avoid `foo?` and `foo!` names: they mangle to `hyx_fooXquestion_markX`, which Python callers cannot reasonably type. The same check also catches `{e!r}` written without the space, which Hy reads as a symbol named `e!r` and which fails at runtime.
+
+### Python view
+
+`npm run gateway:hy2py` compiles each Hy module with Hy's own compiler and writes the Python source to `gateway-hy/py/`, for review and for diffing against upstream.
+
+The tool is `gateway-hy/tools/hy2py.py`. Its output is gitignored and read-only; the Hy files remain the source of truth.
+
+The interop test compiles that view and fails if any `hyx_` name appears.
+
+### Module map
+
+| Hy module | Python view | Upstream Hermes Python it mirrors or calls |
+|---|---|---|
+| `server.hy` | `py/kotoba_gateway/server.py` | `gateway/platforms/api_server.py` (`APIServerAdapter` routes, `_require_auth`, `_handle_health`, `_handle_capabilities`, `_handle_models`); `api_server_openai_routes.py` (`_handle_chat_completions`, `hermes.tool.progress` frames) |
+| `runs.hy` | `py/kotoba_gateway/runs.py` | `gateway/platforms/api_server_runs.py` (`_run_event`, `_handle_runs`, `_handle_run_events`, `_handle_get_run`, `_handle_stop_run`, `terminal_run_status`) |
+| `backend.hy` | `py/kotoba_gateway/backend.py` | `APIServerAdapter._create_agent`; `api_server_runs._make_run_event_callback` (`_FIXED_EVENT_FIELDS`, `_USAGE_FIELDS`); calls `gateway/run.py` (`_resolve_runtime_agent_kwargs`, `_resolve_gateway_model`, `_load_gateway_config`, `_checkpoint_agent_kwargs`, `_current_max_iterations`), `run_agent.AIAgent`, `tools/approval.py` (`register_gateway_notify`), `tools/approval_context.py`, `hermes_state_registry.acquire` |
+| `identity.hy` | `py/kotoba_gateway/identity.py` | none upstream (Kotoba mesh); uses `cryptography` Ed25519 |
+| `ledger.hy` | `py/kotoba_gateway/ledger.py` | none upstream; block/head vocabulary follows `kotobase-federation` |
+| `peers.hy` | `py/kotoba_gateway/peers.py` | none upstream |
+
+The upstream references are to Hermes Agent 0.21.5 (local `4f649c65`). The wire contracts these share (`/v1/runs` event names and key order, the capability shape, `X-Hermes-Session-Id`) are what the gateway tests pin.
+
+### Symbol map
+
+Upstream functions and the Hy definitions that take their place.
+
+| Upstream Python | Hy |
+|---|---|
+| `_run_event(run_id, name, **fields)` | `runs.hy` `run-event` |
+| `terminal_run_status(result)` | `server.hy` `Gateway.launch-turn` (cond on `interrupted` / `failed` / `completed`) |
+| `APIServerAdapter._create_agent(...)` | `backend.hy` `HermesBackend._create-agent` |
+| `_make_run_event_callback` → `_FIXED_EVENT_FIELDS` | `backend.hy` `tool-progress` (inside `_create-agent`) |
+| `_USAGE_FIELDS` | `backend.hy` `USAGE-FIELDS` / `usage-of` |
+| `_require_auth` + `_api_key_passes_startup_guard` | `server.hy` `Gateway.authorize` + the loopback guard in `main` |
+| `_handle_capabilities` | `server.hy` `Handler.capabilities` |
+| `_handle_chat_completions` | `server.hy` `Handler.chat-completions` / `stream-chat` / `blocking-chat` |
+| `_handle_runs` / `_handle_run_events` / `_handle_get_run` / `_handle_stop_run` | `server.hy` `Handler.start-run` / `run-events` / `run-status` / `run-stop` |
+
 ## Decentralized mesh
 
 Every Hy gateway is a self-sufficient node: it owns an identity, stores its sessions as signed content, and talks to other nodes directly. No server, account or registry is needed for any of it to work.
@@ -83,7 +141,7 @@ The mesh makes agent execution and session state independent of any server. Thes
 
 Gateway tests run echo-backed nodes over real HTTP (`npm run test:gateway`). The desktop side runs under vitest.
 
-`gateway-hy/tests/test_gateway.hy` covers the API contract. `gateway-hy/tests/test_mesh.hy` runs three nodes with separate keys and state. The runtime switch is covered in `src/main/kotoba-gateway.test.ts`, and the transport choice in `useDashboardChatTransport.test.tsx`.
+`gateway-hy/tests/test_gateway.hy` covers the API contract. `gateway-hy/tests/test_mesh.hy` runs three nodes with separate keys and state. `gateway-hy/tests/test_python_interop.py` drives the gateway from plain Python. The runtime switch is covered in `src/main/kotoba-gateway.test.ts`, and the transport choice in `useDashboardChatTransport.test.tsx`.
 
 ### Health is unauthenticated
 
@@ -160,3 +218,11 @@ Adopting a head fails when a fetched block's bytes do not match its CID, and whe
 ### Signed requests expire and bind the body
 
 A node request signature verifies only for its exact method, path and body, and only within the clock-skew window.
+
+### Hy modules are plain Python modules
+
+Plain Python imports the Hy modules after `import hy`. It signs and verifies through snake_case names, appends to a ledger, and builds a server.
+
+### Python view compiles without mangled names
+
+Every Hy module's generated Python compiles and contains no `hyx_` mangled names.

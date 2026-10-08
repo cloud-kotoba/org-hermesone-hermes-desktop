@@ -3,6 +3,7 @@
 //   deps   vendor Hy into gateway-hy/.deps for Hermes Agent's python
 //   test   run the gateway contract tests (echo backend)
 //   start  run the gateway against the local Hermes Agent install
+//   hy2py  write the Python view of the Hy sources to gateway-hy/py/
 import { spawnSync } from "node:child_process";
 import { homedir } from "node:os";
 import { dirname, join } from "node:path";
@@ -46,10 +47,12 @@ if (cmd === "deps") {
     [
       "-c",
       "import sys; sys.path[:0]=['.deps','.']; import hy, unittest; " +
-        "sys.exit(not unittest.TextTestRunner().run(unittest.defaultTestLoader.loadTestsFromNames(['tests.test_gateway', 'tests.test_mesh'])).wasSuccessful())",
+        "sys.exit(not unittest.TextTestRunner().run(unittest.defaultTestLoader.loadTestsFromNames(['tests.test_gateway', 'tests.test_mesh', 'tests.test_python_interop'])).wasSuccessful())",
     ],
     { cwd: gw },
   );
+} else if (cmd === "hy2py") {
+  code = run(python, [join(gw, "tools", "hy2py.py"), ...process.argv.slice(3)]);
 } else if (cmd === "start") {
   code = run(
     python,
@@ -60,7 +63,7 @@ if (cmd === "deps") {
     },
   );
 } else {
-  console.error("usage: gateway-hy.mjs deps|test|start [--port N]");
+  console.error("usage: gateway-hy.mjs deps|test|start|hy2py [args]");
   code = 2;
 }
 process.exit(code);

@@ -38,7 +38,7 @@
 (import kotoba_gateway [__version__]
         kotoba_gateway.backend [Callbacks make-backend]
         kotoba_gateway.identity [NodeIdentity verify-request]
-        kotoba_gateway.ledger [BlockStore Ledger valid-cid?]
+        kotoba_gateway.ledger [BlockStore Ledger is-valid-cid]
         kotoba_gateway.peers [PeerTable split-list]
         kotoba_gateway.runs [RunRegistry run-event TERMINAL-STATUSES])
 
@@ -123,7 +123,7 @@
         "local")
       (.get headers "X-Kotoba-Node")
       (do (setv did (verify-request headers method path body))
-          (when (and did (.trusted? self.peers did)) did))
+          (when (and did (.is-trusted self.peers did)) did))
       (not self.api-key) "local"
       True None))
 
@@ -146,7 +146,7 @@
                   "input" (if (isinstance user-message str) user-message (json.dumps user-message))
                   "output" output})
         (except [e Exception]
-          (print f"[kotoba-gateway] ledger append failed: {e!r}" :file sys.stderr)))))
+          (print f"[kotoba-gateway] ledger append failed: {e !r}" :file sys.stderr)))))
 
   (defn forward-turn [self run did body]
     "Delegate a run to peer `did` and relay its events into `run`."
@@ -225,7 +225,7 @@
                              "provider" (or (getattr run.agent "provider" None) "")
                              "node" self.node.did})))
         (except [e Exception]
-          (print f"[kotoba-gateway] run {rid} failed: {e!r}" :file sys.stderr)
+          (print f"[kotoba-gateway] run {rid} failed: {e !r}" :file sys.stderr)
           (.finish run "failed" :completed False :error (str e)))
         (finally
           (setv run.agent None))))
