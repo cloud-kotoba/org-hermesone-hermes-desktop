@@ -68,15 +68,7 @@ if (cmd === "deps") {
     ]);
   }
 } else if (cmd === "test") {
-  code = run(
-    python,
-    [
-      "-c",
-      "import sys; sys.path[:0]=['.deps','.']; import hy, unittest; " +
-        "sys.exit(not unittest.TextTestRunner().run(unittest.defaultTestLoader.loadTestsFromNames(['tests.test_gateway', 'tests.test_mesh', 'tests.test_python_interop'])).wasSuccessful())",
-    ],
-    { cwd: gw },
-  );
+  code = run(python, [join(gw, "tools", "run_tests.py")]);
 } else if (cmd === "hy2py") {
   code = run(python, [join(gw, "tools", "hy2py.py"), ...process.argv.slice(3)]);
 } else if (cmd === "start") {
