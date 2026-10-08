@@ -1,7 +1,7 @@
 ;; Contract tests for the Hermes API surface, run against the echo backend
 ;; over real HTTP so the wire shapes the desktop parses are what we assert.
 
-(import json threading unittest
+(import json tempfile threading unittest
         urllib.request [Request urlopen]
         urllib.error [HTTPError])
 (import kotoba_gateway.backend [EchoBackend]
@@ -17,13 +17,15 @@
 
 (defclass GatewayContract [unittest.TestCase]
   (defn [classmethod] setUpClass [cls]
-    (setv [cls.server _] (make-server "127.0.0.1" 0 (EchoBackend) KEY)
+    (setv cls.state (tempfile.TemporaryDirectory)
+          [cls.server _] (make-server "127.0.0.1" 0 (EchoBackend) KEY :state-dir cls.state.name)
           cls.base f"http://127.0.0.1:{(get cls.server.server_address 1)}")
     (.start (threading.Thread :target cls.server.serve_forever :daemon True)))
 
   (defn [classmethod] tearDownClass [cls]
     (.shutdown cls.server)
-    (.server_close cls.server))
+    (.server_close cls.server)
+    (.cleanup cls.state))
 
   (defn call [self method path [body None] [key KEY] [headers None]]
     (setv req (Request (+ self.base path) :method method

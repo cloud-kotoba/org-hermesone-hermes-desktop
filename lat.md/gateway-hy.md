@@ -35,9 +35,55 @@ The main window gets `--kotoba-gateway-runtime=<runtime>` as an extra argument, 
 
 Packaged builds ship `gateway-hy/` (with `.deps`) as `extraResources`.
 
+## Decentralized mesh
+
+Every Hy gateway is a self-sufficient node: it owns an identity, stores its sessions as signed content, and talks to other nodes directly. No server, account or registry is needed for any of it to work.
+
+The design follows the substrate's federation vocabulary (content-addressed blocks, signed heads, replicas converging on a head, injected transports) rather than inventing a protocol. Every node speaks the same Hermes API, so peers need nothing beyond it.
+
+### Node identity
+
+Each node has an Ed25519 key in `HERMES_HOME/kotoba-node.key` (0600, created on first start), and its id is the matching `did:key`.
+
+`GET /.well-known/kotoba-node` serves a manifest signed by that key, holding the did, url, model and features. A manifest verifies against its own did, so it needs no certificate authority.
+
+### Content-addressed sessions
+
+Each completed turn is an immutable block (`kotoba.turn`: input, output, run id, writer did, `prev`), stored under its CIDv1 (dag-json, sha2-256) in `HERMES_HOME/kotoba-blocks/`.
+
+The session head (`{session, seq, cid}`) is signed by the node that wrote it and kept in `kotoba-heads.json`. Reads re-hash every block, so a corrupted file is treated as absent. `GET /v1/blocks/{cid}` and `GET /v1/sessions/{id}/head` expose blocks and heads to peers.
+
+Replication pulls the chain: verify the head signature, then walk `prev` links fetching missing blocks. Each block's hash must match its CID, and its `session` and `seq` must match the chain. Only then is the head adopted, and only if it is newer. A session is therefore portable: whichever node holds the chain can continue it. When the client sends no history, a run reads it from the ledger.
+
+### Peers, gossip and trust
+
+Discovery and authority are separate, so gossip can spread addresses without spreading permission.
+
+- **Discovery**: seeds (`KOTOBA_PEERS`) plus periodic gossip over `GET /v1/peers`. A peer is recorded only after its manifest verifies, and only under the did that its address proves.
+- **Trust**: an explicit did allowlist (`KOTOBA_TRUSTED_PEERS`, or `POST /v1/peers {"trust": did}`). Only trusted dids may call a node.
+- **Node-to-node auth**: no shared secrets. A caller signs the method, path, unix time and body sha256 (`X-Kotoba-Node`, `X-Kotoba-Timestamp`, `X-Kotoba-Signature`), and the signature expires after 300s. The desktop keeps using its local bearer key.
+
+State lives in `HERMES_HOME/kotoba-peers.json`. Cross-machine peers need a reachable bind (`API_SERVER_HOST`, which also requires `API_SERVER_KEY`) and `KOTOBA_PUBLIC_URL`. All of these can be set in the profile `.env`, which the desktop passes to the spawn.
+
+### Run delegation
+
+`POST /v1/runs` with `"peer": did` (or an `X-Kotoba-Peer` header) runs the turn on that peer. The peer's events are relayed through the local run, tagged with `node`, and stop requests are forwarded.
+
+On completion the origin pulls the session chain, so it holds a verified replica of what the peer wrote. Delegation is one hop and local-only: only the desktop's bearer may delegate, and a node-authenticated request asking to delegate is refused with 403, so relays cannot loop or amplify.
+
+### Remaining central dependencies
+
+The mesh makes agent execution and session state independent of any server. These desktop features still assume a central service, and are optional rather than required:
+
+- Kotoba Cloud account, device, orgs and agent sync (`src/main/kotoba-cloud-*.ts`, `agent-sync.ts`)
+- Model inference, when the configured provider is a hosted API (for example `api.murakumo.cloud`). A local or self-hosted OpenAI-compatible endpoint removes it.
+- Release checks and auto-update (GitHub releases)
+
 ## Tests
 
-Contract tests in `gateway-hy/tests/test_gateway.hy` run the echo backend over real HTTP (`npm run test:gateway`). The runtime switch is covered in `src/main/kotoba-gateway.test.ts`, the transport choice in `useDashboardChatTransport.test.tsx`.
+Gateway tests run echo-backed nodes over real HTTP (`npm run test:gateway`). The desktop side runs under vitest.
+
+`gateway-hy/tests/test_gateway.hy` covers the API contract. `gateway-hy/tests/test_mesh.hy` runs three nodes with separate keys and state. The runtime switch is covered in `src/main/kotoba-gateway.test.ts`, and the transport choice in `useDashboardChatTransport.test.tsx`.
 
 ### Health is unauthenticated
 
@@ -82,3 +128,35 @@ Spawn args carry the launcher, the profile's port and `kotoba-gateway.pid` in th
 ### Local auto chat uses the Hermes API
 
 Local `auto` chat switches to the `/v1` transport only when the Hy gateway is active. Explicit preferences and remote connections are left unchanged.
+
+### Manifest is self-certifying
+
+The node manifest verifies against the did it names, and changing any field breaks the signature.
+
+### Untrusted nodes are refused
+
+A node that is known by address but not on the trust list gets 401 on signed calls.
+
+### Delegated run replicates the session
+
+A run delegated to a peer streams that peer's events, tagged with its did, and finishes with its output. Afterwards the origin holds the identical head, signed by the peer, and can rebuild the history from it.
+
+### A session continues on another node
+
+After replicating a peer's chain, the origin can run the next turn locally. That extends the same chain: seq 1, `prev` set, signed by the origin.
+
+### Gossip spreads addresses not trust
+
+A node learns a peer-of-a-peer through gossip without adding that peer to its trust list.
+
+### Delegation is one hop and local only
+
+A trusted peer asking a node to delegate onward gets 403.
+
+### Tampered blocks are rejected
+
+Adopting a head fails when a fetched block's bytes do not match its CID, and when a head's seq is altered (which also breaks its signature). Valid chains adopt.
+
+### Signed requests expire and bind the body
+
+A node request signature verifies only for its exact method, path and body, and only within the clock-skew window.

@@ -46,7 +46,7 @@ if (cmd === "deps") {
     [
       "-c",
       "import sys; sys.path[:0]=['.deps','.']; import hy, unittest; " +
-        "sys.exit(not unittest.main(module='tests.test_gateway', exit=False, argv=['t']).result.wasSuccessful())",
+        "sys.exit(not unittest.TextTestRunner().run(unittest.defaultTestLoader.loadTestsFromNames(['tests.test_gateway', 'tests.test_mesh'])).wasSuccessful())",
     ],
     { cwd: gw },
   );

@@ -14,6 +14,19 @@
 ;;   GET  /v1/runs/{id}/events       run SSE event stream
 ;;   POST /v1/runs/{id}/stop         interrupt a run
 ;;
+;; Mesh (decentralized operation, see identity/ledger/peers):
+;;
+;;   GET  /.well-known/kotoba-node   signed node manifest (unauthenticated)
+;;   GET  /v1/peers                  verified peers (gossip)
+;;   POST /v1/peers                  add a peer url / trust a did (local only)
+;;   GET  /v1/blocks/{cid}           content-addressed ledger block
+;;   GET  /v1/sessions/{id}/head     signed session head
+;;   POST /v1/sessions/{id}/pull     replicate a session from a peer (local only)
+;;   POST /v1/runs {"peer": did}     delegate a run to a peer (local only)
+;;
+;; Callers authenticate either as the local desktop (Bearer API_SERVER_KEY) or
+;; as a trusted node (did:key-signed request headers).
+;;
 ;; Every route is mirrored under /p/<profile>/ like upstream; one process
 ;; serves one profile, so the prefix is accepted and stripped.
 ;;
@@ -24,12 +37,18 @@
         urllib.parse [urlsplit])
 (import kotoba_gateway [__version__]
         kotoba_gateway.backend [Callbacks make-backend]
+        kotoba_gateway.identity [NodeIdentity verify-request]
+        kotoba_gateway.ledger [BlockStore Ledger valid-cid?]
+        kotoba_gateway.peers [PeerTable split-list]
         kotoba_gateway.runs [RunRegistry run-event TERMINAL-STATUSES])
 
 (setv MAX-BODY-BYTES (* 32 1024 1024)
       KEEPALIVE-SECONDS 15
       PROFILE-PREFIX-RE (re.compile r"^/p/[A-Za-z0-9_.-]+(/.*)$")
       RUN-PATH-RE (re.compile r"^/v1/runs/([A-Za-z0-9_-]+)(/events|/stop)?$")
+      BLOCK-PATH-RE (re.compile r"^/v1/blocks/([a-z2-7]+)$")
+      SESSION-PATH-RE (re.compile r"^/v1/sessions/([A-Za-z0-9_.:-]+)/(head|pull)$")
+      GOSSIP-SECONDS 120
       LOOPBACK #{"127.0.0.1" "::1" "localhost"})
 
 (setv CAPABILITY-ENDPOINTS
@@ -39,7 +58,12 @@
        ["runs" "POST" "/v1/runs"]
        ["run_status" "GET" "/v1/runs/{run_id}"]
        ["run_events" "GET" "/v1/runs/{run_id}/events"]
-       ["run_stop" "POST" "/v1/runs/{run_id}/stop"]])
+       ["run_stop" "POST" "/v1/runs/{run_id}/stop"]
+       ["node_manifest" "GET" "/.well-known/kotoba-node"]
+       ["peers" "GET" "/v1/peers"]
+       ["blocks" "GET" "/v1/blocks/{cid}"]
+       ["session_head" "GET" "/v1/sessions/{session_id}/head"]
+       ["session_pull" "POST" "/v1/sessions/{session_id}/pull"]])
 
 ;; ─── Request parsing ─────────────────────────────────────────────────────
 
@@ -76,19 +100,88 @@
 ;; ─── Gateway state ───────────────────────────────────────────────────────
 
 (defclass Gateway []
-  (defn __init__ [self backend api-key]
+  (defn __init__ [self backend api-key node ledger peers [public-url None]]
     (setv self.backend backend
           self.api-key (or api-key None)
+          self.node node
+          self.ledger ledger
+          self.peers peers
+          self.public-url public-url
           self.runs (RunRegistry)
           self.started-at (time.time)
           self.model (.model-name backend)
           self.hermes-version (.version backend)))
 
-  (defn authorized? [self header]
-    (when (not self.api-key)
-      (return True))
-    (setv expected (+ "Bearer " self.api-key))
-    (hmac.compare_digest (.encode (or header "")) (.encode expected)))
+  (defn authorize [self headers method path body]
+    "\"local\" for the desktop's bearer key, a trusted peer's did for a valid
+    node signature, or None. Without API_SERVER_KEY (loopback only) any local
+    caller is the desktop."
+    (setv header (or (.get headers "Authorization") ""))
+    (cond
+      (and self.api-key (.startswith header "Bearer "))
+      (when (hmac.compare_digest (.encode header) (.encode (+ "Bearer " self.api-key)))
+        "local")
+      (.get headers "X-Kotoba-Node")
+      (do (setv did (verify-request headers method path body))
+          (when (and did (.trusted? self.peers did)) did))
+      (not self.api-key) "local"
+      True None))
+
+  (defn manifest [self]
+    (.sign-document self.node
+                    {"type" "kotoba.node" "did" self.node.did
+                     "url" self.public-url
+                     "api" "hermes" "implementation" f"kotoba-gateway/{__version__}"
+                     "model" self.model "hermes_version" self.hermes-version
+                     "features" ["runs" "chat_completions" "blocks" "session_heads"
+                                 "run_delegation"]
+                     "issued_at" (int (time.time))}))
+
+  (defn record-turn [self run user-message output model]
+    "Append a completed turn to the session's content-addressed chain."
+    (when (and self.ledger run.session-id)
+      (try
+        (.append self.ledger run.session-id
+                 {"run_id" run.run-id "model" model
+                  "input" (if (isinstance user-message str) user-message (json.dumps user-message))
+                  "output" output})
+        (except [e Exception]
+          (print f"[kotoba-gateway] ledger append failed: {e!r}" :file sys.stderr)))))
+
+  (defn forward-turn [self run did body]
+    "Delegate a run to peer `did` and relay its events into `run`."
+    (setv rid run.run-id)
+    (defn work []
+      (setv run.status "running")
+      (try
+        (setv started (.call self.peers did "POST" "/v1/runs"
+                             {#** body "session_id" run.session-id}))
+        (setv run.remote [did (get started "run_id")])
+        (for [event (.stream-events self.peers did (get started "run_id"))]
+          (setv name (.get event "event" ""))
+          (setv fields (dfor [k v] (.items event)
+                             :if (not-in k #{"event" "run_id" "timestamp"}) k v))
+          (cond
+            (.startswith name "run.")
+            (do (when (= name "run.completed") (.pull-session self did run.session-id))
+                (.finish run (cut name 4 None) #** fields :node did)
+                (return))
+            True (.put run (run-event rid name #** fields :node did))))
+        (.finish run "failed" :completed False :error f"peer {did} closed the run stream")
+        (except [e Exception]
+          (.finish run "failed" :completed False :error f"delegation to {did} failed: {e}"))))
+    (.start (threading.Thread :target work :name f"kotoba-fwd-{rid}" :daemon True))
+    run)
+
+  (defn pull-session [self did session]
+    "Replicate `session` from peer `did`; returns blocks fetched, or None."
+    (when (not session) (return None))
+    (try
+      (setv head (.call self.peers did "GET" f"/v1/sessions/{session}/head"))
+      (.adopt self.ledger head (fn [cid] (.fetch-block self.peers did cid)))
+      (except [e Exception]
+        (print f"[kotoba-gateway] pull {session} from {did} failed: {e}" :file sys.stderr)
+        None)))
 
   (defn launch-turn [self run user-message history instructions model]
     "Run one agent turn on a worker thread, feeding `run`'s event queue."
@@ -123,11 +216,14 @@
           (.finish run "failed" :completed False
                    :error (str (or (.get result "error") "agent run failed")))
           True
-          (.finish run "completed" :completed True
+          (do
+            (.record-turn self run user-message (or (.get result "final_response") "") model)
+            (.finish run "completed" :completed True
                    :output (or (.get result "final_response") "")
                    :usage (.get result "usage" {})
                    :runtime {"model" (or (getattr run.agent "model" None) model self.model)
-                             "provider" (or (getattr run.agent "provider" None) "")}))
+                             "provider" (or (getattr run.agent "provider" None) "")
+                             "node" self.node.did})))
         (except [e Exception]
           (print f"[kotoba-gateway] run {rid} failed: {e!r}" :file sys.stderr)
           (.finish run "failed" :completed False :error (str e)))
@@ -182,13 +278,17 @@
     (.write self.wfile (.encode frame "utf-8"))
     (.flush self.wfile))
 
-  (defn read-json [self]
+  (defn read-raw-body [self]
+    "Read the request body once (signatures cover it). False when too large."
     (setv n (int (or (.get self.headers "Content-Length") 0)))
     (when (> n MAX-BODY-BYTES)
-      (.send-error-json self 413 "Request body too large." "body_too_large")
-      (return None))
+      (return False))
+    (setv self.raw-body (if (> n 0) (.read self.rfile n) b""))
+    True)
+
+  (defn read-json [self]
     (try
-      (setv body (json.loads (.decode (.read self.rfile n) "utf-8")))
+      (setv body (json.loads (.decode (or self.raw-body b"{}") "utf-8")))
       (except [Exception]
         (.send-error-json self 400 "Invalid JSON in request body." "invalid_json")
         (return None)))
@@ -207,14 +307,28 @@
   (defn dispatch [self method]
     (setv path (.route-path self)
           g self.gateway)
+    (when (not (.read-raw-body self))
+      (return (.send-error-json self 413 "Request body too large." "body_too_large")))
     (when (= path "/health")
       (return (.send-json self 200 {"status" "ok" "platform" "hermes-agent"
                                     "version" g.hermes-version
-                                    "runtime" "kotoba-hy"})))
-    (when (not (.authorized? g (.get self.headers "Authorization")))
-      (return (.send-error-json self 401 "Invalid API key." "invalid_api_key")))
-    (setv run-match (.match RUN-PATH-RE path))
+                                    "runtime" "kotoba-hy" "node" g.node.did})))
+    (when (= path "/.well-known/kotoba-node")
+      (return (.send-json self 200 (.manifest g))))
+    (setv self.principal (.authorize g self.headers method self.path self.raw-body))
+    (when (is self.principal None)
+      (return (.send-error-json self 401 "Invalid API key or untrusted node." "invalid_api_key")))
+    (setv run-match (.match RUN-PATH-RE path)
+          block-match (.match BLOCK-PATH-RE path)
+          session-match (.match SESSION-PATH-RE path))
     (cond
+      (and (= method "GET") (= path "/v1/peers")) (.peers-list self)
+      (and (= method "POST") (= path "/v1/peers")) (.peers-add self)
+      (and (= method "GET") block-match) (.block self (.group block-match 1))
+      (and (= method "GET") session-match (= (.group session-match 2) "head"))
+      (.session-head self (.group session-match 1))
+      (and (= method "POST") session-match (= (.group session-match 2) "pull"))
+      (.session-pull self (.group session-match 1))
       (and (= method "GET") (= path "/health/detailed")) (.health-detailed self)
       (and (= method "GET") (= path "/api/status")) (.api-status self)
       (and (= method "GET") (= path "/v1/capabilities")) (.capabilities self)
@@ -275,7 +389,11 @@
                              "responses_api" False "responses_streaming" False
                              "run_submission" True "run_events" True "run_stop" True
                              "session_continuity_header" "X-Hermes-Session-Id"
-                             "cors" False}
+                             "cors" False
+                             "mesh" {"node" g.node.did
+                                     "peers" (len (.listing g.peers))
+                                     "content_addressed_sessions" True
+                                     "run_delegation" True}}
                  "endpoints" (dfor [name m p] CAPABILITY-ENDPOINTS
                                    name {"method" m "path" p})}))
 
@@ -301,10 +419,22 @@
           run (.create g.runs session-id))
     (when (is session-id None)
       (setv run.session-id run.run-id))
-    (.launch-turn g run user-input
-                  (normalize-history (.get body "conversation_history"))
-                  (.get body "instructions")
-                  (.get body "model"))
+    (setv peer (or (.get body "peer") (.get self.headers "X-Kotoba-Peer")))
+    (cond
+      peer
+      (do (when (!= self.principal "local")
+            ;; One hop only: a delegated run never re-delegates.
+            (return (.send-error-json self 403 "Only the local desktop may delegate runs."
+                                      "delegation_forbidden")))
+          (when (is (.get-peer g.peers peer) None)
+            (return (.send-error-json self 404 f"Unknown peer {peer}." "peer_not_found")))
+          (.forward-turn g run peer (dfor [k v] (.items body) :if (!= k "peer") k v)))
+      True
+      (.launch-turn g run user-input
+                    (or (normalize-history (.get body "conversation_history"))
+                        (.history g.ledger run.session-id))
+                    (.get body "instructions")
+                    (.get body "model")))
     (.send-json self 202 {"object" "hermes.run" "run_id" run.run-id
                           "status" "queued" "session_id" run.session-id}
                 {"X-Hermes-Session-Id" run.session-id}))
@@ -337,10 +467,74 @@
 
   (defn run-stop [self run-id]
     (setv run (.stop self.gateway.runs run-id))
+    (when (and run (getattr run "remote" None))
+      (setv [did remote-id] run.remote)
+      (try (.call self.gateway.peers did "POST" f"/v1/runs/{remote-id}/stop" {})
+           (except [Exception])))
     (if run
         (.send-json self 200 {"object" "hermes.run" "run_id" run-id
                               "status" (if (in run.status TERMINAL-STATUSES) run.status "stopping")})
         (.send-error-json self 404 f"Run {run-id} not found." "run_not_found")))
+
+  ;; -- mesh --
+
+  (defn local-only [self]
+    (when (!= self.principal "local")
+      (.send-error-json self 403 "Only the local desktop may change the peer table."
+                        "local_only")
+      (return True))
+    False)
+
+  (defn peers-list [self]
+    (setv g self.gateway)
+    (.send-json self 200 {"object" "list" "node" g.node.did "peers" (.listing g.peers)}))
+
+  (defn peers-add [self]
+    (when (.local-only self) (return))
+    (setv body (.read-json self))
+    (when (is body None) (return))
+    (setv g self.gateway
+          out {})
+    (when (.get body "url")
+      (setv did (.add-url g.peers (get body "url")))
+      (when (is did None)
+        (return (.send-error-json self 422 "No verifiable Kotoba node at that url."
+                                  "peer_unverified")))
+      (setv (get out "did") did))
+    (when (.get body "trust")
+      (.trust g.peers (get body "trust"))
+      (setv (get out "trusted") (get body "trust")))
+    (.save g.peers)
+    (.send-json self 200 out))
+
+  (defn block [self cid]
+    (setv data (.get-bytes self.gateway.ledger.blocks cid))
+    (when (is data None)
+      (return (.send-error-json self 404 f"Block {cid} not found." "block_not_found")))
+    (.send_response self 200)
+    (.send_header self "Content-Type" "application/json")
+    (.send_header self "Content-Length" (str (len data)))
+    (.send_header self "ETag" f"\"{cid}\"")
+    (.send_header self "Cache-Control" "public, max-age=31536000, immutable")
+    (.end_headers self)
+    (.write self.wfile data))
+
+  (defn session-head [self session]
+    (setv head (.head self.gateway.ledger session))
+    (if head
+        (.send-json self 200 head)
+        (.send-error-json self 404 f"Session {session} has no head." "session_not_found")))
+
+  (defn session-pull [self session]
+    (when (.local-only self) (return))
+    (setv body (.read-json self))
+    (when (is body None) (return))
+    (setv fetched (.pull-session self.gateway (.get body "peer") session))
+    (if (is fetched None)
+        (.send-error-json self 502 "Could not replicate the session from that peer."
+                          "pull_failed")
+        (.send-json self 200 {"session" session "fetched" fetched
+                              "head" (.head self.gateway.ledger session)})))
 
   ;; -- chat completions --
 
@@ -469,11 +663,23 @@
   (.add_argument p "--pid-file" :default (os.environ.get "KOTOBA_GATEWAY_PID_FILE"))
   (.parse_args p argv))
 
-(defn make-server [host port backend api-key]
-  (setv gateway (Gateway backend api-key)
+(defn make-server [host port backend api-key [state-dir None] [seeds None] [trusted None]
+                   [public-url None]]
+  "Build the HTTP server. `state-dir` holds the node key, blocks, heads and
+  peer table (the profile's HERMES_HOME in production)."
+  (setv state (or state-dir (os.path.expanduser "~/.hermes"))
+        node (NodeIdentity.load-or-create (os.path.join state "kotoba-node.key"))
+        ledger (Ledger (BlockStore (os.path.join state "kotoba-blocks"))
+                       (os.path.join state "kotoba-heads.json") node)
+        peers (PeerTable node (os.path.join state "kotoba-peers.json") seeds trusted)
+        gateway (Gateway backend api-key node ledger peers public-url)
         handler (type "BoundHandler" #(Handler) {"gateway" gateway})
         server (ThreadingHTTPServer #(host port) handler))
   (setv server.daemon_threads True)
+  (when (not public-url)
+    ;; The bound port (port 0 picks one). Peers on other hosts need
+    ;; KOTOBA_PUBLIC_URL, since a loopback address only works on this machine.
+    (setv gateway.public-url f"http://{host}:{(get server.server_address 1)}"))
   [server gateway])
 
 (defn main [[argv None]]
@@ -486,13 +692,18 @@
            :file sys.stderr)
     (return 78))
   (setv backend (make-backend args.backend)
-        [server gateway] (make-server args.host args.port backend api-key))
+        [server gateway] (make-server args.host args.port backend api-key
+                                      :state-dir home
+                                      :seeds (split-list (os.environ.get "KOTOBA_PEERS"))
+                                      :trusted (split-list (os.environ.get "KOTOBA_TRUSTED_PEERS"))
+                                      :public-url (os.environ.get "KOTOBA_PUBLIC_URL")))
+  (.start-gossip gateway.peers (int (os.environ.get "KOTOBA_GOSSIP_SECONDS" GOSSIP-SECONDS)))
   (write-pid-file args.pid-file)
   (defn shutdown [signum frame]
     (.start (threading.Thread :target server.shutdown :daemon True)))
   (signal.signal signal.SIGTERM shutdown)
   (signal.signal signal.SIGINT shutdown)
-  (print f"[kotoba-gateway] Hermes API on http://{args.host}:{args.port} backend={backend.name} model={gateway.model}"
+  (print f"[kotoba-gateway] Hermes API on http://{args.host}:{args.port} backend={backend.name} model={gateway.model} node={gateway.node.did}"
          :file sys.stderr :flush True)
   (try
     (.serve_forever server)
