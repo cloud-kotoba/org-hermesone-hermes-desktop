@@ -139,7 +139,7 @@ The mesh makes agent execution and session state independent of any server. Thes
 
 ## Tests
 
-Gateway tests run echo-backed nodes over real HTTP (`npm run test:gateway`). The desktop side runs under vitest.
+Gateway tests run echo-backed nodes over real HTTP (`npm run test:gateway`), in CI on Python 3.11 and 3.14. The desktop side runs under vitest.
 
 `gateway-hy/tests/test_gateway.hy` covers the API contract. `gateway-hy/tests/test_mesh.hy` runs three nodes with separate keys and state. `gateway-hy/tests/test_python_interop.py` drives the gateway from plain Python. The runtime switch is covered in `src/main/kotoba-gateway.test.ts`, and the transport choice in `useDashboardChatTransport.test.tsx`.
 

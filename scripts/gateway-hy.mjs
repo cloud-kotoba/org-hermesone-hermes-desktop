@@ -15,11 +15,16 @@ const gw = join(root, "gateway-hy");
 const hermesHome = process.env.HERMES_HOME || join(homedir(), ".hermes");
 const hermesRepo = process.env.HERMES_REPO || join(hermesHome, "hermes-agent");
 // Same interpreter the desktop spawns (src/main/installer.ts HERMES_PYTHON).
+const hermesPython =
+  process.platform === "win32"
+    ? join(hermesRepo, "venv", "Scripts", "python.exe")
+    : join(hermesRepo, "venv", "bin", "python");
+// HERMES_PYTHON wins as given (CI sets it to its own `python`). Otherwise use
+// the Hermes interpreter when installed, and plain python3 on machines without
+// Hermes: deps, test and hy2py need only Hy (+ cryptography for the tests).
 const python =
   process.env.HERMES_PYTHON ||
-  (process.platform === "win32"
-    ? join(hermesRepo, "venv", "Scripts", "python.exe")
-    : join(hermesRepo, "venv", "bin", "python"));
+  (existsSync(hermesPython) ? hermesPython : "python3");
 
 // Plain Node script linted with the TypeScript preset (see audit-production-dependencies.mjs).
 // eslint-disable-next-line @typescript-eslint/explicit-function-return-type
@@ -40,19 +45,18 @@ if (cmd === "deps") {
   // the Hermes interpreter locally, plain python3 on a build machine.
   const target = join(gw, ".deps");
   const req = join(gw, "requirements.txt");
-  const py = existsSync(python) ? python : "python3";
   code = run("uv", [
     "pip",
     "install",
     "--python",
-    py,
+    python,
     "--target",
     target,
     "-r",
     req,
   ]);
   if (code !== 0) {
-    code = run(py, [
+    code = run(python, [
       "-m",
       "pip",
       "install",
@@ -77,7 +81,7 @@ if (cmd === "deps") {
   code = run(python, [join(gw, "tools", "hy2py.py"), ...process.argv.slice(3)]);
 } else if (cmd === "start") {
   code = run(
-    python,
+    process.env.HERMES_PYTHON || hermesPython,
     [join(gw, "kotoba_gateway_main.py"), ...process.argv.slice(3)],
     {
       cwd: hermesRepo,

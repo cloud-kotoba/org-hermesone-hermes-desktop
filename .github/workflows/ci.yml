@@ -41,3 +41,36 @@ jobs:
 
       - name: Lint
         run: npm run lint
+
+  # The Hy gateway (gateway-hy/) runs under Hermes Agent's Python, so its
+  # tests run on the oldest Python Hermes supports and on the 3.14 that
+  # Hermes' managed runtime uses. They use the echo backend and need no
+  # Hermes install: only Hy (vendored by gateway:deps) and cryptography.
+  gateway:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        python: ["3.11", "3.14"]
+    env:
+      HERMES_PYTHON: python
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python ${{ matrix.python }}
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python }}
+
+      - name: Install test dependencies
+        run: python -m pip install -r gateway-hy/requirements-test.txt
+
+      - name: Vendor Hy
+        run: node scripts/gateway-hy.mjs deps
+
+      - name: Check the Python view compiles
+        run: node scripts/gateway-hy.mjs hy2py --check
+
+      - name: Gateway tests
+        run: node scripts/gateway-hy.mjs test
