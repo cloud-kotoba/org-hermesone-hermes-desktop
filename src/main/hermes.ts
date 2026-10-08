@@ -50,6 +50,13 @@ import {
 } from "./utils";
 import { getProfilePort } from "./gateway-ports";
 import { multiplexerServes } from "./gateway-multiplex";
+import {
+  isHyGateway,
+  kotobaGatewayArgs,
+  kotobaGatewayEnv,
+  kotobaGatewayPidPath,
+  kotobaGatewaySpawnError,
+} from "./kotoba-gateway";
 import { promptSudoPassword, promptSecretValue } from "./gatewayPrompt";
 import { getSecret } from "./secrets";
 import { readModels } from "./models";
@@ -3420,6 +3427,10 @@ function getGatewaySpawnError(): string | null {
       "Install or repair Hermes Agent, then try again."
     );
   }
+  if (isHyGateway()) {
+    const hyError = kotobaGatewaySpawnError();
+    if (hyError) return `Cannot start the gateway: ${hyError}`;
+  }
   return null;
 }
 
@@ -3549,7 +3560,7 @@ export function startGatewayDetailed(profile?: string): GatewayStartResult {
   // waiting for a pid file that will never appear. isGatewayRunning() above
   // already answers true for those; this stays as the explicit guard for the
   // window where the record appears between the two reads.
-  if (multiplexerServes(profile)) {
+  if (!isHyGateway() && multiplexerServes(profile)) {
     return { success: true, running: true, alreadyRunning: true };
   }
 
@@ -3588,12 +3599,23 @@ export function startGatewayDetailed(profile?: string): GatewayStartResult {
   // subcommand, as the CLI requires). The flag makes the CLI repoint
   // HERMES_HOME at the profile's dir internally; the shared repo/venv stay
   // put. The default profile takes no flag.
-  const cliArgs = gatewayCliCommandArgs(profile, ["gateway"]);
+  //
+  // The Hy gateway (default) is a standalone Hermes API server: it takes the
+  // port and pid file as flags and the profile via HERMES_HOME instead.
+  const spawnArgs = isHyGateway()
+    ? kotobaGatewayArgs(resolveProfile(profile), getProfilePort(profile))
+    : hermesCliArgs(gatewayCliCommandArgs(profile, ["gateway"]));
+  const spawnEnv = isHyGateway()
+    ? {
+        ...gatewayEnv,
+        ...kotobaGatewayEnv(resolveProfile(profile), HERMES_REPO),
+      }
+    : gatewayEnv;
   let proc: ChildProcess;
   try {
-    proc = spawn(HERMES_PYTHON, hermesCliArgs(cliArgs), {
+    proc = spawn(HERMES_PYTHON, spawnArgs, {
       cwd: HERMES_REPO,
-      env: gatewayEnv,
+      env: spawnEnv,
       stdio: ["ignore", "ignore", stderrFd >= 0 ? stderrFd : "ignore"],
       detached: true,
       ...HIDDEN_SUBPROCESS_OPTIONS,
@@ -3687,6 +3709,7 @@ function parsePidFromFile(pidFile: string): number | null {
  * profile's gateway has its own PID file — that's what lets them coexist.
  */
 function gatewayPidPath(profile?: string): string {
+  if (isHyGateway()) return kotobaGatewayPidPath(resolveProfile(profile));
   return join(profileHome(resolveProfile(profile)), "gateway.pid");
 }
 
@@ -3774,7 +3797,7 @@ export function isGatewayRunning(profile?: string): boolean {
   // No pid file of its own does NOT mean off: with
   // `gateway.multiplex_profiles` on, one default gateway is the inbound
   // process for every profile and records which ones in gateway_state.json.
-  return multiplexerServes(profile);
+  return !isHyGateway() && multiplexerServes(profile);
 }
 
 export function isApiReady(): boolean {
@@ -4071,11 +4094,36 @@ export function restartGatewayViaCli(
   return promise;
 }
 
+/**
+ * The Hy gateway has no `gateway restart` subcommand: stop it, start a fresh
+ * process, and wait for /health on the profile's port.
+ */
+async function restartHyGatewayOnce(
+  profile: string | undefined,
+  healthTimeoutMs: number,
+  healthPollMs: number,
+): Promise<boolean> {
+  if (isRemoteMode()) return false;
+  stopGateway(profile, true);
+  await new Promise((r) => setTimeout(r, 300));
+  const started = startGatewayDetailed(profile);
+  if (!started.success) return false;
+  const deadline = Date.now() + healthTimeoutMs;
+  while (Date.now() < deadline) {
+    if (await isApiServerReady(profile)) return true;
+    await new Promise((r) => setTimeout(r, healthPollMs));
+  }
+  return false;
+}
+
 async function restartGatewayViaCliOnce(
   profile?: string,
   healthTimeoutMs = 30000,
   healthPollMs = 250,
 ): Promise<boolean> {
+  if (isHyGateway()) {
+    return restartHyGatewayOnce(profile, healthTimeoutMs, healthPollMs);
+  }
   try {
     if (isRemoteMode()) return false;
     ensureInitialized();

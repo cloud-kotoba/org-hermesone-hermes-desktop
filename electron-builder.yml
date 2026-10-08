@@ -24,6 +24,16 @@ files:
   - "!{.eslintcache,eslint.config.mjs,.prettierignore,.prettierrc.yaml,dev-app-update.yml,CHANGELOG.md,README.md}"
   - "!{.env,.env.*,.npmrc,pnpm-lock.yaml}"
   - "!{tsconfig.json,tsconfig.node.json,tsconfig.web.json}"
+# The Hy gateway (Hermes API server) runs under the user's Hermes venv
+# python, so it ships as plain files outside the asar, with Hy vendored in
+# gateway-hy/.deps by `npm run gateway:deps`.
+extraResources:
+  - from: gateway-hy
+    to: gateway-hy
+    filter:
+      - "**/*"
+      - "!tests/**"
+      - "!**/__pycache__/**"
 asarUnpack:
   - resources/**
   - node_modules/better-sqlite3/prebuilds/*.node

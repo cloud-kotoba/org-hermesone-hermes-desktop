@@ -1,4 +1,7 @@
 import { EventEmitter } from "events";
+
+// These cover the upstream `hermes gateway` CLI lifecycle, not the Hy gateway.
+process.env.KOTOBA_GATEWAY_RUNTIME = "hermes";
 import { describe, it, expect, vi, afterEach, beforeEach } from "vitest";
 import { mkdirSync, rmSync } from "fs";
 

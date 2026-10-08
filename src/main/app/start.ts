@@ -25,6 +25,7 @@ import { setGatewayPromptParent } from "../gatewayPrompt";
 import { showChatContextMenu } from "./context-menu";
 import { buildMenu } from "./menu";
 import { setupUpdater } from "./updater";
+import { gatewayRuntime } from "../kotoba-gateway";
 
 const APP_NAME = process.env.HERMES_DESKTOP_APP_NAME?.trim() || "Kotoba";
 const OPEN_DEVTOOLS_ON_START =
@@ -217,6 +218,8 @@ function createWindow(): void {
       webSecurity: true,
       allowRunningInsecureContent: false,
       webviewTag: true,
+      // Lets the renderer pick its chat transport without an IPC round trip.
+      additionalArguments: [`--kotoba-gateway-runtime=${gatewayRuntime()}`],
     },
   });
 

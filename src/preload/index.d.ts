@@ -50,6 +50,8 @@ import type { AgentCapabilitySnapshot } from "../shared/agent-capabilities";
 import type { SessionLocation } from "../shared/session-location";
 
 interface ElectronAPI {
+  /** Local Hermes API server: Kotoba's Hy gateway or upstream `hermes gateway`. */
+  kotobaGatewayRuntime: "hy" | "hermes";
   process: {
     platform: NodeJS.Platform;
     versions: {

@@ -167,6 +167,22 @@ export function dashboardChatEnabledFromEnv(
   return value !== "0" && value?.toLowerCase() !== "false";
 }
 
+/**
+ * With Kotoba's Hy gateway serving the local Hermes API, local chat in "auto"
+ * goes over `/v1/runs` to that gateway instead of the upstream dashboard
+ * WebSocket. An explicit "dashboard" preference still wins.
+ */
+export function localChatTransportPreference(
+  mode: "local" | "remote" | "ssh",
+  preference: "auto" | "dashboard" | "legacy",
+  gatewayRuntime: "hy" | "hermes" | undefined,
+): "auto" | "dashboard" | "legacy" {
+  if (mode === "local" && preference === "auto" && gatewayRuntime === "hy") {
+    return "legacy";
+  }
+  return preference;
+}
+
 export function dashboardChatEnabledForConnection(
   envValue: string | undefined,
   connectionModeLoaded: boolean,

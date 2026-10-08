@@ -10,7 +10,10 @@ import {
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { Mock } from "vitest";
 import type { DashboardRpcEvent } from "../dashboardGatewayClient";
-import { useDashboardChatTransport } from "./useDashboardChatTransport";
+import {
+  localChatTransportPreference,
+  useDashboardChatTransport,
+} from "./useDashboardChatTransport";
 import { useTranscriptState } from "./useTranscriptState";
 import type { ActiveTurn, ChatMessage, UsageState } from "../types";
 
@@ -1608,5 +1611,19 @@ describe("useDashboardChatTransport delta coalescing", () => {
     expect(
       (afterFlush[afterFlush.length - 2] as { content?: string }).content,
     ).toBe("alphabeta");
+  });
+});
+
+describe("localChatTransportPreference", () => {
+  // @lat: [[gateway-hy#Tests#Local auto chat uses the Hermes API]]
+  it("routes local auto chat over /v1 only when the Hy gateway serves it", () => {
+    expect(localChatTransportPreference("local", "auto", "hy")).toBe("legacy");
+    expect(localChatTransportPreference("local", "auto", "hermes")).toBe(
+      "auto",
+    );
+    expect(localChatTransportPreference("local", "dashboard", "hy")).toBe(
+      "dashboard",
+    );
+    expect(localChatTransportPreference("remote", "auto", "hy")).toBe("auto");
   });
 });

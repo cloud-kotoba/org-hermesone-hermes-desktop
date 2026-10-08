@@ -123,7 +123,15 @@ interface PublicConnectionRegistry {
   connections: PublicConnectionConfig[];
 }
 
+// Main passes `--kotoba-gateway-runtime=<hy|hermes>` via additionalArguments.
+const kotobaGatewayRuntime: "hy" | "hermes" = process.argv.includes(
+  "--kotoba-gateway-runtime=hermes",
+)
+  ? "hermes"
+  : "hy";
+
 const electronAPI = {
+  kotobaGatewayRuntime,
   process: {
     platform: process.platform,
     versions: {
