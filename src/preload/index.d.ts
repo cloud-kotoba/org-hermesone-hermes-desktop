@@ -781,6 +781,11 @@ interface HermesAPI {
       avatar?: string | null;
     }>
   >;
+  /** One profile's info without scanning every profile (null if unknown).
+   *  For the status bar and other single-profile pollers. */
+  getProfileSummary: (
+    id: string,
+  ) => Promise<Awaited<ReturnType<HermesAPI["listProfiles"]>>[number] | null>;
   createProfile: (
     name: string,
     cloneFrom: string | null,

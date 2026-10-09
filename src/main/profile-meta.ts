@@ -1,6 +1,7 @@
 import { join } from "path";
 import { promises as fs } from "fs";
 import { profileHome, isValidProfileName, PROFILE_NAME_ERROR } from "./utils";
+import { invalidateProfileCache } from "./profile-cache";
 
 export { PROFILE_COLORS, defaultColorForName } from "../shared/profileColors";
 
@@ -67,6 +68,8 @@ async function writeProfileMeta(
   }
   await fs.mkdir(profileHome(name), { recursive: true });
   await fs.writeFile(metaPath(name), JSON.stringify(next, null, 2), "utf-8");
+  // Name, colour and avatar are part of the profile list.
+  invalidateProfileCache(name);
 }
 
 export async function setProfileColor(

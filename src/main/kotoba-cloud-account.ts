@@ -23,7 +23,7 @@
  * in `.env`: `setEnvValue` / `readEnv` route `KOTOBA_API_KEY` there, and
  * `migrateKotobaTokensToKeychain` moves any plaintext copy at startup.
  */
-import { existsSync, readdirSync } from "fs";
+import { existsSync, readdirSync, promises as fsp } from "fs";
 import { join } from "path";
 import {
   KOTOBA_PLAINTEXT_WARNING,
@@ -42,7 +42,7 @@ import {
   readStoredKotobaToken,
   writeStoredKotobaToken,
 } from "./kotoba-cloud-token-store";
-import { isValidProfileName } from "./utils";
+import { isValidProfileName, profilePaths } from "./utils";
 import {
   getKotobaOrgSelection,
   kotobaCloudManageUrl,
@@ -264,6 +264,33 @@ function profilesOnDisk(): string[] {
     // unreadable profiles dir — the default profile is still migrated
   }
   return names;
+}
+
+/**
+ * The profiles whose `.env` still carries a plaintext `KOTOBA_API_KEY`, found
+ * without blocking the main process. Startup used to read every profile's
+ * `.env` synchronously before the first window (~1,000 reads on a large
+ * install). Reading them asynchronously and handing only the matches to the
+ * synchronous migration keeps that off the critical path; on a migrated
+ * install the match list is empty.
+ */
+export async function profilesWithPlaintextKotobaToken(): Promise<string[]> {
+  const line = new RegExp(
+    `^\\s*(?:export\\s+)?${KOTOBA_API_KEY_ENV}\\s*=`,
+    "m",
+  );
+  const names = profilesOnDisk();
+  const hits = await Promise.all(
+    names.map(async (name) => {
+      const { envFile } = profilePaths(name === "default" ? undefined : name);
+      try {
+        return line.test(await fsp.readFile(envFile, "utf-8")) ? name : null;
+      } catch {
+        return null; // no .env: nothing to migrate
+      }
+    }),
+  );
+  return hits.filter((n): n is string => n !== null);
 }
 
 export type KotobaTokenMigration =

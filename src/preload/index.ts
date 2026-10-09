@@ -1071,6 +1071,13 @@ const hermesAPI = {
     }>
   > => ipcRenderer.invoke("list-profiles"),
 
+  /** One profile's info without scanning every profile (null if unknown). */
+  getProfileSummary: (
+    id: string,
+  ): Promise<
+    Awaited<ReturnType<typeof hermesAPI.listProfiles>>[number] | null
+  > => ipcRenderer.invoke("get-profile-summary", id),
+
   createProfile: (
     name: string,
     cloneFrom: string | null,

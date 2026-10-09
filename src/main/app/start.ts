@@ -20,7 +20,10 @@ import {
   startServiceSupervisor,
   stopServiceSupervisorPolling,
 } from "../service-supervisor";
-import { migrateKotobaTokensToKeychain } from "../kotoba-cloud-account";
+import {
+  migrateKotobaTokensToKeychain,
+  profilesWithPlaintextKotobaToken,
+} from "../kotoba-cloud-account";
 import { setGatewayPromptParent } from "../gatewayPrompt";
 import { showChatContextMenu } from "./context-menu";
 import { buildMenu } from "./menu";
@@ -119,14 +122,19 @@ export function startMainProcess(): void {
     });
 
     // Move a plaintext Kotoba Cloud token out of any profile .env into the
-    // OS keychain before anything spawns an agent (safeStorage needs `ready`).
-    try {
-      const moved = migrateKotobaTokensToKeychain();
-      if (Object.keys(moved).length > 0)
-        console.log("[kotoba-cloud] token migration:", moved);
-    } catch (err) {
-      console.warn("[kotoba-cloud] token migration failed:", err);
-    }
+    // OS keychain (safeStorage needs `ready`). The scan for candidates is
+    // async so ~1,000 profiles' .env reads don't delay the first window; until
+    // it finishes a plaintext token simply stays where agents already read it.
+    void profilesWithPlaintextKotobaToken()
+      .then((candidates) => {
+        if (candidates.length === 0) return;
+        const moved = migrateKotobaTokensToKeychain(candidates);
+        if (Object.keys(moved).length > 0)
+          console.log("[kotoba-cloud] token migration:", moved);
+      })
+      .catch((err) => {
+        console.warn("[kotoba-cloud] token migration failed:", err);
+      });
 
     createWindow();
     buildMenu({ getMainWindow: () => mainWindow, openExternalUrl });

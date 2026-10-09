@@ -2,7 +2,7 @@
 
 A profile with no `gateway.pid` of its own is not necessarily off. With `gateway.multiplex_profiles` on, one process — the default profile's gateway — serves every profile on the host, and no named profile gets a pid file.
 
-Measured 2026-09-22 on this fork's workstation: 93 profiles, one live gateway (`~/.hermes/gateway.pid` → pid 37295), `served_profiles` in `~/.hermes/gateway_state.json` listing all 93, zero per-profile `gateway.pid` files, and `hermes profile list` reporting Gateway=running for every one of them. The desktop's Agents page showed 92 of the 93 as **Off**, and the row the operator started spun on **Starting…** until the poll gave up, because [[src/main/profiles.ts#isGatewayRunning]] read only the per-profile pid file. Starting one by hand reproduces what the app's spawn would have hit:
+Measured 2026-09-22 on this fork's workstation: 93 profiles, one live gateway (`~/.hermes/gateway.pid` → pid 37295), `served_profiles` in `~/.hermes/gateway_state.json` listing all 93, zero per-profile `gateway.pid` files, and `hermes profile list` reporting Gateway=running for every one of them. The desktop's Agents page showed 92 of the 93 as **Off**, and the row the operator started spun on **Starting…** until the poll gave up, because `isGatewayRunning` in `src/main/profiles.ts` read only the per-profile pid file. Starting one by hand reproduces what the app's spawn would have hit:
 
 ```
 ✗ The default gateway is running as a profile multiplexer and already serves profile 'akc-blog-i18n'.
@@ -29,7 +29,7 @@ That distinction is the whole safety of the change. An empty `served` array is a
 
 ## What the two callers do with it
 
-[[src/main/profiles.ts#isGatewayRunning]] asks first, so a served profile reads **Running** instead of **Off**, and [[src/main/profiles.ts#listProfiles]] sets `gatewayShared` on the row so the pill's tooltip can say *Served by the shared gateway* rather than implying the profile owns a process.
+[[src/main/profiles.ts#buildProfile]] asks first, so a served profile reads **Running** instead of **Off**, and [[src/main/profiles.ts#listProfiles]] sets `gatewayShared` on the row so the pill's tooltip can say *Served by the shared gateway* rather than implying the profile owns a process.
 
 [[src/main/hermes.ts#startGatewayDetailed]] refuses to spawn for a served profile and reports `alreadyRunning`. Spawning would only write the CLI's exit-78 refusal into `gateway-stderr.log` and leave the renderer's 10-second poll waiting for a pid file that is never going to appear.
 

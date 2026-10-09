@@ -81,7 +81,9 @@ Run state is the content-addressed ledger, replicated continuously, so a profile
 
 - **What moves.** The session ledger (signed head plus blocks), cron run state (`last-run`/`next-run` per job, stored as a ledger entry), and memories. Definitions are not copied; they come from git.
 - **What does not move.** Large SQLite files such as `state.db`, the FTS index and caches. The new owner rebuilds them lazily from the ledger, which is why a 669 MB `state.db` does not block a handoff.
-- **Continuous replication.** After every turn the owner pushes the new blocks and head to a shared store (murakumo R2, which already holds actions receipts, or kotobase). Recovery after a crash therefore loses at most the in-flight turn.
+- **Continuous replication.** After every turn the owner pushes the new blocks and head to yataverse. Recovery after a crash therefore loses at most the in-flight turn.
+- **Store: yataverse, not R2.** Decided 2026-10-09: replicated blocks live on yataverse, the content-addressed bytes plane that verifies every read and write against its CID. Neither murakumo R2 nor kotobase is used. Writes carry a tenant Biscuit, minted per node, like the kagi reveal.
+- **CID codec.** yataverse names a block by the CID of its raw bytes (raw codec, `bafkrei…`), while the Hy ledger currently tags CIDs with the dag-json codec. The ledger switches to raw-codec CIDv1 before Phase 4, so a block's ledger CID and its yataverse CID are the same string.
 - **Planned handoff.**
   1. The reconciler marks the lease `:draining`.
   2. The old owner finishes or stops its running turn, publishes its final head, and releases.
@@ -99,10 +101,58 @@ A granted lease triggers a governed kagi reveal of that profile's `.env` to the 
 
 The desktop stops scanning disk and stops ticking. It reads the control plane's read model and talks to profile owners.
 
-- **No full scans on timers.** Replace the 4 s `listProfiles()` polls in StatusBar and Office with a single-profile status call for the active profile, plus the paginated `GET /api/profiles` read model for lists. Drop avatars from list payloads, cache `liveMultiplexer` once per call, and read cron state asynchronously with an mtime cache.
+- **No full scans on timers.** Phase 1 already replaced the status bar's poll with a single-profile call and bounded list scans ([[profile-distribution#Desktop relief]]). With fleet placement, lists come from the paginated `GET /api/profiles` read model instead of local disk.
 - **No local multiplexer.** The local gateway runs only profiles pinned to the workstation (development, `:attested`). Everything else is owned by fleet nodes.
 - **Routing.** Chat for a profile goes to its owner, found through the read model, over the tailnet. It uses run delegation when the desktop is connected to a local gateway.
 - **Fleet view.** The Agents screen shows owner node, lease state, queue latency and last run per profile, from the read model.
+
+## Desktop relief
+
+Phase 1, implemented: the desktop's own per-profile cost is bounded, independent of where profiles run. It changes no fleet behavior.
+
+- **Shared, briefly reused scans.** Concurrent `listProfiles()` callers share one in-flight scan, and a finished list is reused for 3 s ([[src/main/profiles.ts#listProfiles]]). Writes that change the list invalidate it: metadata writes in `profile-meta.ts`, plus create and delete, through [[src/main/profile-cache.ts#invalidateProfileCache]].
+- **Per-profile memo.** Config, `.env`/SOUL presence, skill count, metadata and cron state are reused until one of five watched files changes (profile dir, `config.yaml`, `profile-meta.json`, `cron/jobs.json`, `cron/executions.db-wal`), or 60 s pass. The synchronous cron SQLite read happens only on change.
+- **One multiplexer read per scan.** `gateway_state.json` is read once per scan, not twice per profile.
+- **Single-profile status.** [[src/main/profiles.ts#getProfileSummary]] (`get-profile-summary` IPC) serves the status bar and the Agents post-switch poll, which used to run a full scan every 4 s and every 700 ms respectively.
+- **Async startup token scan.** [[src/main/kotoba-cloud-account.ts#profilesWithPlaintextKotobaToken]] finds `.env` files with a plaintext token asynchronously, so the synchronous keychain migration touches only those, not all ~1,000 before the first window.
+
+Measured on the workstation's 1,015 profiles, 2026-10-09:
+
+| Call | Before | After |
+|---|---|---|
+| Status bar refresh (every 4 s) | 2.0–2.6 s, main thread blocked up to 646 ms | 13 ms, blocked 5 ms |
+| List rescan (Office, every 4 s while visible) | 2.0–2.6 s, blocked up to 646 ms | 0.2–0.6 s, blocked ≤ 41 ms; 0 ms within the 3 s reuse |
+| First scan after launch | 2.6 s | ~3 s, once (every profile is read) |
+
+Avatars stay in the list payload: no profile on the workstation has one, so they cost nothing today.
+
+### Tests
+
+The cache's contract, checked against a temporary HERMES_HOME (`src/main/profiles.test.ts`, `src/main/kotoba-token-scan.test.ts`).
+
+#### One multiplexer read per scan
+
+A scan reads the multiplexer record once however many profiles there are, and still reports served profiles as running and shared.
+
+#### Concurrent callers share one scan
+
+Simultaneous `listProfiles()` calls share one scan, a call within the reuse window does not scan, and a call after it does.
+
+#### Unchanged profiles are not re-read
+
+After the reuse window, only a profile whose cron file changed has its cron state read again; the others are served from the memo.
+
+#### Mutations invalidate the cache
+
+A rename followed immediately by `listProfiles()` returns the new name, without waiting for the reuse window.
+
+#### Summary reads one profile
+
+`getProfileSummary` reads only the requested profile, returns null for unknown or invalid ids, and answers for `default`.
+
+#### Startup token scan is async and selective
+
+The startup scan returns only the profiles whose `.env` contains `KOTOBA_API_KEY`, ignoring profiles without one or without an `.env`.
 
 ## Capacity
 
@@ -129,7 +179,7 @@ How the design behaves when parts fail, and what each costs.
 
 Ordered so the desktop gets relief immediately, and each later phase can be stopped without stranding profiles.
 
-1. **Desktop relief (local, no fleet).** Remove the full-scan polls, the duplicate multiplexer reads, the synchronous sqlite calls and the avatar payload. This fixes the freezing on its own.
+1. **Desktop relief (local, no fleet). Done**, see [[profile-distribution#Desktop relief]]. Status-bar refresh fell from ~2 s to 13 ms, and list rescans from ~2 s to 0.2–0.6 s with the main thread blocked at most 41 ms.
 2. **Shard host mode, measured locally.** Implement `--shard` (heap scheduler, lazy agents) in the Hy gateway. Run it on the workstation with all profiles in place of the upstream multiplexer, and measure idle CPU, memory, and per-profile cost EMA.
 3. **Leases and reconciler.** Add the profile registry, lease table and reconciler to cloud-murakumo. Canary: 20 `:anonymous` profiles on benjamin, everything else stays on the workstation.
 4. **Replication and secrets.** Continuous ledger push, planned and unplanned handoff, and per-lease kagi reveal. Kill the canary node and confirm recovery within the TTL.
@@ -140,7 +190,6 @@ Ordered so the desktop gets relief immediately, and each later phase can be stop
 Decisions this design needs before Phase 3.
 
 - **Residency classification.** Which of the 1,015 profiles are `:attested`? Needs a pass over their secrets references.
-- **Shared store.** murakumo R2 vs kotobase for replicated ledger blocks.
 - **Model access per node.** Profiles whose provider is a hosted API run anywhere. Local-model profiles need nodes with the model loaded, as a placement capability.
 - **Upstream compatibility.** The shard host runs Hermes' `AIAgent` per turn. Whether all profile features (MCP servers, plugins, messaging platforms) work without a resident gateway per profile needs checking during Phase 2.
 - **ADR.** Wording of the decision that supersedes "only the workstation ticks a profile".

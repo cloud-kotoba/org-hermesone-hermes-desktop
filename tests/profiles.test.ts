@@ -36,6 +36,7 @@ vi.mock("child_process", () => ({
 import {
   createProfile,
   deleteProfile,
+  invalidateProfileCache,
   listProfiles,
   setActiveProfile,
 } from "../src/main/profiles";
@@ -45,6 +46,9 @@ const PROFILES_DIR = join(TEST_HOME, "profiles");
 
 beforeEach(() => {
   execFileSyncMock.mockReset();
+  // listProfiles caches across calls in one process; each test writes its own
+  // fixture straight to disk, so start every test from a cold cache.
+  invalidateProfileCache();
   mkdirSync(TEST_HOME, { recursive: true });
   mkdirSync(PROFILES_DIR, { recursive: true });
 });

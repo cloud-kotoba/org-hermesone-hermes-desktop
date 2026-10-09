@@ -18,7 +18,11 @@ import {
   PROFILE_NAME_ERROR,
 } from "./utils";
 import { HIDDEN_SUBPROCESS_OPTIONS } from "./process-options";
-import { multiplexerServesHome } from "./gateway-multiplex";
+import { liveMultiplexer } from "./gateway-multiplex";
+import {
+  invalidateProfileCache,
+  onProfileCacheInvalidated,
+} from "./profile-cache";
 import { readProfileMeta, defaultColorForName } from "./profile-meta";
 import { readProfileCronState, type ProfileCronState } from "./profile-cron";
 
@@ -151,12 +155,9 @@ async function countSkills(profilePath: string): Promise<number> {
   }
 }
 
-async function isGatewayRunning(profilePath: string): Promise<boolean> {
-  // Under `gateway.multiplex_profiles` (the CLI default) no named profile owns
-  // a gateway.pid — one default gateway serves them all and records which in
-  // gateway_state.json. Ask that first, or every served profile reads "Off"
-  // while its bots are online (measured 2026-09-22: 92 of 93).
-  if (multiplexerServesHome(profilePath)) return true;
+/** Is the profile's OWN gateway (its gateway.pid) alive? The multiplexer
+ *  case is answered from the per-scan snapshot before this is reached. */
+async function ownGatewayRunning(profilePath: string): Promise<boolean> {
   const pidFile = join(profilePath, "gateway.pid");
   try {
     const raw = (await fs.readFile(pidFile, "utf-8")).trim();
@@ -174,10 +175,6 @@ async function isGatewayRunning(profilePath: string): Promise<boolean> {
   }
 }
 
-async function getActiveProfileName(): Promise<string> {
-  return getActiveProfileNameSync();
-}
-
 async function fileExists(path: string): Promise<boolean> {
   try {
     await fs.access(path);
@@ -187,92 +184,171 @@ async function fileExists(path: string): Promise<boolean> {
   }
 }
 
-export async function listProfiles(): Promise<ProfileInfo[]> {
-  const activeName = await getActiveProfileName();
-  const profiles: ProfileInfo[] = [];
+// @lat: [[profile-distribution#Desktop relief]]
+// ── Scan cost control ────────────────────────────────────────────────────
+// With ~1,000 profiles a full scan is the most expensive thing the desktop
+// does, and several screens used to ask for one every few seconds (measured
+// 2026-10-09: StatusBar and Office every 4 s, each scan opening ~1,015 cron
+// sqlite files and re-reading gateway_state.json ~2,030 times on the main
+// process). Three layers keep that bounded:
+//   1. one scan at a time: concurrent callers share the in-flight promise;
+//   2. a finished list is reused for LIST_TTL_MS; mutations invalidate it;
+//   3. each profile's expensive fields are memoized until one of its files
+//      changes (a few stats), so a fresh scan mostly reuses entries.
 
-  // Default profile is HERMES_HOME itself
-  const [
-    defaultConfig,
-    defaultHasEnv,
-    defaultHasSoul,
-    defaultSkills,
-    defaultGw,
-    defaultMeta,
-  ] = await Promise.all([
-    readProfileConfig(HERMES_HOME),
-    fileExists(join(HERMES_HOME, ".env")),
-    fileExists(join(HERMES_HOME, "SOUL.md")),
-    countSkills(HERMES_HOME),
-    isGatewayRunning(HERMES_HOME),
-    readProfileMeta("default"),
-  ]);
+const LIST_TTL_MS = 3000;
+/** Recompute an entry at least this often even if no watched file changed
+ *  (a skill added inside a category dir does not touch skills/'s mtime). */
+const ENTRY_MAX_AGE_MS = 60_000;
 
-  profiles.push({
-    id: "default",
-    name: defaultMeta.name || "default",
-    path: HERMES_HOME,
-    isDefault: true,
-    isActive: activeName === "default",
-    model: defaultConfig.model,
-    provider: defaultConfig.provider,
-    hasEnv: defaultHasEnv,
-    hasSoul: defaultHasSoul,
-    skillCount: defaultSkills,
-    gatewayRunning: defaultGw,
-    gatewayShared: false,
-    cron: readProfileCronState(HERMES_HOME),
-    color: defaultMeta.color || defaultColorForName("default"),
-    avatar: defaultMeta.avatar || null,
-  });
+/** A profile's fields that do not depend on live gateway state. */
+type ProfileBase = Omit<
+  ProfileInfo,
+  "isActive" | "gatewayRunning" | "gatewayShared"
+>;
+
+const entryCache = new Map<
+  string,
+  { sig: string; at: number; base: ProfileBase }
+>();
+let listCache: { at: number; gen: number; profiles: ProfileInfo[] } | null =
+  null;
+let listInFlight: { gen: number; promise: Promise<ProfileInfo[]> } | null =
+  null;
+let listGeneration = 0;
+
+onProfileCacheInvalidated((id) => {
+  listGeneration += 1;
+  listCache = null;
+  if (id) entryCache.delete(id);
+  else entryCache.clear();
+});
+
+/** The live multiplexer's served set, read ONCE per scan. */
+type MuxView = { served: Set<string> } | null;
+
+function muxSnapshot(): MuxView {
+  const record = liveMultiplexer();
+  return record ? { served: new Set(record.served) } : null;
+}
+
+/** Same answer as multiplexerServes(): a live multiplexer always serves the
+ *  default profile (it IS the default's gateway). */
+function servedBy(mux: MuxView, id: string): boolean {
+  if (!mux) return false;
+  return id === "default" || mux.served.has(id);
+}
+
+async function mtimeOf(path: string): Promise<number> {
+  try {
+    return (await fs.stat(path)).mtimeMs;
+  } catch {
+    return -1;
+  }
+}
+
+/** Cheap change detector for a profile: the mtimes of the files its
+ *  expensive fields come from. The directory's own mtime covers .env /
+ *  SOUL.md appearing or disappearing; the WAL covers cron executions. Skill
+ *  changes are left to ENTRY_MAX_AGE_MS: five stats per profile instead of
+ *  eight is a third less I/O per scan on a ~1,000-profile install. */
+async function profileSignature(profilePath: string): Promise<string> {
+  const parts = await Promise.all(
+    [
+      "",
+      "config.yaml",
+      "profile-meta.json",
+      join("cron", "jobs.json"),
+      join("cron", "executions.db-wal"),
+    ].map((rel) => mtimeOf(rel ? join(profilePath, rel) : profilePath)),
+  );
+  return parts.join(":");
+}
+
+async function buildProfile(
+  id: string,
+  profilePath: string,
+  isDefault: boolean,
+  mux: MuxView,
+): Promise<ProfileInfo> {
+  const sig = await profileSignature(profilePath);
+  let entry = entryCache.get(id);
+  if (!entry || entry.sig !== sig || Date.now() - entry.at > ENTRY_MAX_AGE_MS) {
+    const [config, hasEnv, hasSoul, skillCount, meta] = await Promise.all([
+      readProfileConfig(profilePath),
+      fileExists(join(profilePath, ".env")),
+      fileExists(join(profilePath, "SOUL.md")),
+      countSkills(profilePath),
+      readProfileMeta(id),
+    ]);
+    entry = {
+      sig,
+      at: Date.now(),
+      base: {
+        id,
+        name: meta.name || id,
+        path: profilePath,
+        isDefault,
+        model: config.model,
+        provider: config.provider,
+        hasEnv,
+        hasSoul,
+        skillCount,
+        // Synchronous (better-sqlite3), but only re-run when the cron files'
+        // mtimes change, not on every scan.
+        cron: readProfileCronState(profilePath),
+        color: meta.color || defaultColorForName(id),
+        avatar: meta.avatar || null,
+      },
+    };
+    entryCache.set(id, entry);
+  }
+  // Under `gateway.multiplex_profiles` (the CLI default) no named profile owns
+  // a gateway.pid — one default gateway serves them all and records which in
+  // gateway_state.json. Ask that first, or every served profile reads "Off"
+  // while its bots are online (measured 2026-09-22: 92 of 93).
+  const served = servedBy(mux, id);
+  return {
+    ...entry.base,
+    isActive: false,
+    gatewayRunning: served || (await ownGatewayRunning(profilePath)),
+    // Only a named profile can be served by ANOTHER process; the default's
+    // multiplexer is its own gateway.
+    gatewayShared: !isDefault && served,
+  };
+}
+
+async function scanProfiles(): Promise<ProfileInfo[]> {
+  const mux = muxSnapshot();
+  const profiles: ProfileInfo[] = [
+    // Default profile is HERMES_HOME itself
+    await buildProfile("default", HERMES_HOME, true, mux),
+  ];
+  const seen = new Set<string>(["default"]);
 
   // Named profiles under ~/.hermes/profiles/
   if (existsSync(PROFILES_DIR)) {
     try {
       const dirs = await fs.readdir(PROFILES_DIR);
-      const profilePromises = dirs.map(async (name) => {
-        // Skip dotfiles like .DS_Store so they don't get mistaken for profiles.
-        if (name.startsWith(".")) return null;
-        if (!isValidNamedProfileName(name)) return null;
-
-        const profilePath = join(PROFILES_DIR, name);
-        const stat = await fs.stat(profilePath);
-        if (!stat.isDirectory()) return null;
-
-        // Any subdirectory of ~/.hermes/profiles/ is treated as a profile.
-        // We deliberately do NOT require config.yaml or .env to exist —
-        // a freshly created profile may have neither yet, and filtering on
-        // them silently hides it from the UI (issue #19).
-        const [config, hasEnvFile, hasSoul, skillCount, gwRunning, meta] =
-          await Promise.all([
-            readProfileConfig(profilePath),
-            fileExists(join(profilePath, ".env")),
-            fileExists(join(profilePath, "SOUL.md")),
-            countSkills(profilePath),
-            isGatewayRunning(profilePath),
-            readProfileMeta(name),
-          ]);
-
-        return {
-          id: name,
-          name: meta.name || name,
-          path: profilePath,
-          isDefault: false,
-          isActive: activeName === name,
-          model: config.model,
-          provider: config.provider,
-          hasEnv: hasEnvFile,
-          hasSoul: hasSoul,
-          skillCount,
-          gatewayRunning: gwRunning,
-          gatewayShared: multiplexerServesHome(profilePath),
-          cron: readProfileCronState(profilePath),
-          color: meta.color || defaultColorForName(name),
-          avatar: meta.avatar || null,
-        } as ProfileInfo;
-      });
-
-      const resolved = await Promise.all(profilePromises);
+      const resolved = await Promise.all(
+        dirs.map(async (name) => {
+          // Skip dotfiles like .DS_Store so they don't get mistaken for profiles.
+          if (name.startsWith(".")) return null;
+          if (!isValidNamedProfileName(name)) return null;
+          const profilePath = join(PROFILES_DIR, name);
+          try {
+            if (!(await fs.stat(profilePath)).isDirectory()) return null;
+          } catch {
+            return null;
+          }
+          // Any subdirectory of ~/.hermes/profiles/ is treated as a profile.
+          // We deliberately do NOT require config.yaml or .env to exist —
+          // a freshly created profile may have neither yet, and filtering on
+          // them silently hides it from the UI (issue #19).
+          seen.add(name);
+          return buildProfile(name, profilePath, false, mux);
+        }),
+      );
       for (const p of resolved) {
         if (p) profiles.push(p);
       }
@@ -281,7 +357,64 @@ export async function listProfiles(): Promise<ProfileInfo[]> {
     }
   }
 
+  // Forget entries for profiles that no longer exist.
+  for (const id of entryCache.keys()) {
+    if (!seen.has(id)) entryCache.delete(id);
+  }
   return profiles;
+}
+
+/** Mark the active profile on a (possibly cached) list. Read live, so a
+ *  profile switch needs no invalidation. */
+function withActive(list: ProfileInfo[]): ProfileInfo[] {
+  const active = getActiveProfileNameSync();
+  return list.map((p) => ({ ...p, isActive: p.id === active }));
+}
+
+export { invalidateProfileCache };
+
+export async function listProfiles(): Promise<ProfileInfo[]> {
+  const gen = listGeneration;
+  if (
+    listCache &&
+    listCache.gen === gen &&
+    Date.now() - listCache.at < LIST_TTL_MS
+  ) {
+    return withActive(listCache.profiles);
+  }
+  if (!listInFlight || listInFlight.gen !== gen) {
+    const promise = scanProfiles().then((profiles) => {
+      if (gen === listGeneration) {
+        listCache = { at: Date.now(), gen, profiles };
+      }
+      return profiles;
+    });
+    const flight = { gen, promise };
+    listInFlight = flight;
+    void promise.finally(() => {
+      if (listInFlight === flight) listInFlight = null;
+    });
+  }
+  return withActive(await listInFlight.promise);
+}
+
+/** One profile's info without scanning the rest — what the status bar and
+ *  the post-switch gateway poll need. Null for an unknown profile. */
+export async function getProfileSummary(
+  id: string,
+): Promise<ProfileInfo | null> {
+  const isDefault = id === "default";
+  if (!isDefault && !isValidNamedProfileName(id)) return null;
+  const profilePath = isDefault ? HERMES_HOME : join(PROFILES_DIR, id);
+  if (!isDefault) {
+    try {
+      if (!(await fs.stat(profilePath)).isDirectory()) return null;
+    } catch {
+      return null;
+    }
+  }
+  const info = await buildProfile(id, profilePath, isDefault, muxSnapshot());
+  return { ...info, isActive: id === getActiveProfileNameSync() };
 }
 
 export function createProfile(
@@ -340,6 +473,7 @@ export function createProfile(
     );
   }
 
+  invalidateProfileCache(id);
   return { success: true, id };
 }
 
@@ -377,6 +511,7 @@ export function deleteProfile(name: string): {
           "The profile directory still exists after deletion. Stop processes using it and retry.",
       };
     }
+    invalidateProfileCache(name);
     return { success: true };
   } catch (err) {
     return { success: false, error: commandErrorMessage(err) };
