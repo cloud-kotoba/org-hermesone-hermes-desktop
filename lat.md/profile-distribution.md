@@ -200,6 +200,7 @@ Checked after the switch:
 What the measurement and switch surfaced, and how each was resolved.
 
 - **Node key not durable in HERMES_HOME.** `~/.hermes/kotoba-node.key` from 2026-10-08 was gone the next day, cause unknown. Resolved: node key, ledger and peer table now live in `~/.kotoba/homes/<id>/` (id from the home's real path), and files found in HERMES_HOME are moved there once.
+- **A slow pass silenced the host heartbeat.** Under swap thrash (load average about 420) one rescan took about 12 minutes, and the heartbeat was only written between passes, so after 20 minutes hermes-cron-guard started ticking overdue profiles itself, adding load. Resolved: `ShardHost.heartbeat-forever` in `gateway-hy/kotoba_gateway/shard.hy` writes it from its own thread every 60 s, unless the current pass has run longer than 30 minutes (`is-stalled`), so a wedged loop is still handed to the guard.
 - **`profiles/default` shadowed the root home.** The workstation has a `profiles/default` directory with no jobs. The index keyed it as `default`, so the host heartbeat went to `profiles/default/cron/` and the guard saw the root heartbeat age. Resolved: `default` always means HERMES_HOME, as upstream resolves it, and `profiles/default` is skipped.
 - **Ticker heartbeats.** Resolved: run mode writes upstream's markers per profile after each tick and keeps the default home's heartbeat fresh. Profiles with nothing due still beat only at housekeeping (≤ 6 h); accepted.
 - **Delivery without live adapters.** Accepted: no profile on the workstation has messaging-bot credentials, 1,749 of 1,774 enabled jobs deliver `local`, and the rest use the internal bot-chat mailbox that upstream's tick drains.
@@ -336,3 +337,7 @@ The node key moves from HERMES_HOME to its `~/.kotoba/homes/<id>` directory once
 #### A profiles/default directory never shadows the root home
 
 With both a root `cron/jobs.json` and a `profiles/default` directory, the `default` entry is the root home, and the host heartbeat goes to the root home.
+
+#### The host heartbeat survives slow passes but not a wedged loop
+
+The host heartbeat keeps beating while a scheduler pass is slow (20 min), stops once a pass exceeds the 30 min stall bound, and resumes when the pass ends.
