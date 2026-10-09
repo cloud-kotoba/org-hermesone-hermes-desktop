@@ -42,7 +42,8 @@
         kotoba_gateway.ledger [BlockStore Ledger is-valid-cid]
         kotoba_gateway.peers [PeerTable split-list]
         kotoba_gateway.runs [RunRegistry run-event TERMINAL-STATUSES]
-        kotoba_gateway.shard [ProfileIndex ShardHost cost-report live-multiplexer upstream-tick])
+        kotoba_gateway.shard [ProfileIndex ShardHost cost-report live-multiplexer
+                              upstream-heartbeat upstream-tick])
 
 (setv MAX-BODY-BYTES (* 32 1024 1024)
       KEEPALIVE-SECONDS 15
@@ -685,11 +686,34 @@
   (.add_argument p "--turns-per-node" :type int :default 5)
   (.parse_args p argv))
 
+(setv NODE-STATE-FILES ["kotoba-node.key" "kotoba-heads.json" "kotoba-peers.json" "kotoba-blocks"])
+
+(defn default-state-dir [hermes-home]
+  "Node identity, ledger and peers live under ~/.kotoba/homes/<id>, outside
+  the Hermes-managed home: on 2026-10-09 the node key written to HERMES_HOME
+  had disappeared overnight and the node came back with a new did:key.
+  `<id>` is derived from the home's real path, so each profile home keeps
+  its own node. Files found in the old location are moved over once."
+  (import hashlib shutil)
+  (setv real (os.path.realpath hermes-home)
+        state (os.path.join (os.path.expanduser (os.environ.get "KOTOBA_STATE_ROOT" "~/.kotoba/homes"))
+                            (cut (.hexdigest (hashlib.sha256 (.encode real "utf-8"))) 16)))
+  (os.makedirs state :mode 0o700 :exist_ok True)
+  (with [f (open (os.path.join state "HOME") "w" :encoding "utf-8")]
+    (.write f (+ real "\n")))
+  (for [name NODE-STATE-FILES]
+    (setv old (os.path.join hermes-home name)
+          new (os.path.join state name))
+    (when (and (os.path.exists old) (not (os.path.exists new)))
+      (shutil.move old new)
+      (print f"[kotoba-gateway] moved {old} -> {new}" :file sys.stderr)))
+  state)
+
 (defn make-server [host port backend api-key [state-dir None] [seeds None] [trusted None]
                    [public-url None]]
   "Build the HTTP server. `state-dir` holds the node key, blocks, heads and
   peer table (the profile's HERMES_HOME in production)."
-  (setv state (or state-dir (os.path.expanduser "~/.hermes"))
+  (setv state (or state-dir (default-state-dir (os.path.expanduser "~/.hermes")))
         node (NodeIdentity.load-or-create (os.path.join state "kotoba-node.key"))
         ledger (Ledger (BlockStore (os.path.join state "kotoba-blocks"))
                        (os.path.join state "kotoba-heads.json") node)
@@ -725,7 +749,7 @@
     (return 78))
   (setv backend (make-backend args.backend)
         [server gateway] (make-server args.host args.port backend api-key
-                                      :state-dir home
+                                      :state-dir (default-state-dir home)
                                       :seeds (split-list (os.environ.get "KOTOBA_PEERS"))
                                       :trusted (split-list (os.environ.get "KOTOBA_TRUSTED_PEERS"))
                                       :public-url (os.environ.get "KOTOBA_PUBLIC_URL")))
@@ -734,7 +758,8 @@
     (setv gateway.shard (ShardHost (ProfileIndex home)
                                    (if (= args.shard "run") (upstream-tick) None)
                                    :mode args.shard :max-turns args.max-turns
-                                   :rescan-seconds args.shard-rescan-seconds))
+                                   :rescan-seconds args.shard-rescan-seconds
+                                   :heartbeat-fn (when (= args.shard "run") (upstream-heartbeat))))
     (.start gateway.shard)
     (print f"[kotoba-gateway] shard {args.shard}: max-turns={args.max-turns} rescan={args.shard-rescan-seconds}s"
            :file sys.stderr :flush True))

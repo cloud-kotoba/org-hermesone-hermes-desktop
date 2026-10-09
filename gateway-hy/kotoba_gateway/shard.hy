@@ -22,6 +22,9 @@
 (setv INACTIVE-STATES #{"paused" "completed" "disabled"}
       DEFAULT-RESCAN-SECONDS 60
       DEFAULT-HOUSEKEEPING-SECONDS (* 6 3600)
+      ;; The default home's ticker heartbeat is the host-level liveness signal
+      ;; (hermes-cron-guard falls back to ticking itself after 20 min stale).
+      HOST-HEARTBEAT-SECONDS 60
       COST-EMA-ALPHA 0.3
       HISTORY-DAYS 7)
 
@@ -135,7 +138,8 @@
                   [mode "observe"] [max-turns 4]
                   [rescan-seconds DEFAULT-RESCAN-SECONDS]
                   [housekeeping-seconds DEFAULT-HOUSEKEEPING-SECONDS]
-                  [clock time.time]]
+                  [clock time.time]
+                  [heartbeat-fn None]]
     (when (not-in mode #{"observe" "run"})
       (raise (ValueError f"unknown shard mode {mode}")))
     (setv self.index index
@@ -145,6 +149,11 @@
           self.rescan-seconds rescan-seconds
           self.housekeeping-seconds housekeeping-seconds
           self.clock clock
+          ;; run mode: (heartbeat-fn name home error-or-None), as upstream's
+          ;; ticker loop records per-profile liveness after each tick.
+          self.heartbeat-fn heartbeat-fn
+          self.last-host-beat None
+          self.last-error None
           self.heap []
           self.version {}            ; name -> int, for lazy heap deletion
           self.seq 0
@@ -242,12 +251,19 @@
 
   (defn tick-profile [self name]
     (setv entry (.get self.index.entries name)
-          t0 (time.perf_counter))
+          t0 (time.perf_counter)
+          error None)
     (try
       (when entry (self.tick-fn name (get entry "home")))
       (except [e Exception]
+        (setv error f"{(. (type e) __name__)}: {e}"
+              self.last-error error)
         (print f"[kotoba-shard] tick {name} failed: {e !r}" :file sys.stderr))
       (finally
+        (when (and entry self.heartbeat-fn)
+          (try (self.heartbeat-fn name (get entry "home") error)
+               (except [e Exception]
+                 (print f"[kotoba-shard] heartbeat {name} failed: {e !r}" :file sys.stderr))))
         (setv dt (- (time.perf_counter) t0)
               prev (.get self.cost-ema name)
               (get self.cost-ema name) (if (is prev None) dt
@@ -258,16 +274,33 @@
 
   ;; -- loop --
 
+  (defn host-heartbeat [self now]
+    "Run mode: keep the default home's ticker heartbeat fresh while the loop
+    is alive, so watchers of that file see a live cron ticker."
+    (when (and self.heartbeat-fn
+               (or (is self.last-host-beat None)
+                   (>= (- now self.last-host-beat) HOST-HEARTBEAT-SECONDS)))
+      (setv entry (.get self.index.entries "default"))
+      (when entry
+        (setv self.last-host-beat now)
+        (try (self.heartbeat-fn "default" (get entry "home") None)
+             (except [e Exception]
+               (print f"[kotoba-shard] host heartbeat failed: {e !r}" :file sys.stderr))))))
+
   (defn step [self]
     "One scheduler pass: rescan if due, fire what's due. Returns seconds to sleep."
     (setv now (self.clock))
     (when (or (is self.last-rescan None) (>= (- now self.last-rescan) self.rescan-seconds))
       (.rescan self))
+    (.host-heartbeat self now)
     (for [[name due] (.pop-due self now)]
       (.fire self name due now))
     (setv nd (.next-due self)
-          until-rescan (- (+ self.last-rescan self.rescan-seconds) (self.clock)))
-    (max 0.05 (min until-rescan (if (is nd None) until-rescan (- nd (self.clock))))))
+          until-rescan (- (+ self.last-rescan self.rescan-seconds) (self.clock))
+          wait (if (is nd None) until-rescan (min until-rescan (- nd (self.clock)))))
+    (when self.heartbeat-fn
+      (setv wait (min wait HOST-HEARTBEAT-SECONDS)))
+    (max 0.05 wait))
 
   (defn run-forever [self stop-event]
     (while (not (.is-set stop-event))
@@ -296,6 +329,7 @@
      "rescan_seconds" self.rescan-seconds
      "rescan_ms" (when self.rescan-ms (round self.rescan-ms 1))
      "fires" self.fires
+     "last_tick_error" self.last-error
      "recent_fires" (list self.recent)
      "uptime_seconds" (round uptime 1)
      "cpu_percent" (round (* 100 (/ (- (get usage "cpu_seconds") self.cpu-at-start) uptime)) 2)
@@ -310,6 +344,19 @@
   (fn [name home]
     (with [(_profile_cron_scope home)]
       (tick :verbose False :adapters None :loop None :sync True))))
+
+(defn upstream-heartbeat []
+  "heartbeat-fn that records ticker liveness with Hermes' own markers, in the
+  profile's scope (`cron/ticker_heartbeat`, `ticker_last_success`,
+  `ticker_last_error`) -- what upstream's ticker loop writes after a cycle."
+  (import cron.scheduler_provider [_profile_cron_scope]
+          cron.jobs [record_ticker_heartbeat clear_ticker_error record_ticker_error])
+  (fn [name home error]
+    (with [(_profile_cron_scope home)]
+      (record_ticker_heartbeat :success (is error None))
+      (if (is error None)
+          (clear_ticker_error)
+          (record_ticker_error error)))))
 
 (defn live-multiplexer [hermes-home]
   "The upstream multiplexer's pid when its gateway_state.json says it is

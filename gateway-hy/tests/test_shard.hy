@@ -4,7 +4,8 @@
 (import json os sqlite3 tempfile threading time unittest
         datetime [datetime timezone timedelta])
 (import kotoba_gateway.shard [ProfileIndex ShardHost cost-report live-multiplexer
-                              profile-schedule])
+                              profile-schedule]
+        kotoba_gateway.server [default-state-dir])
 
 (setv T0 1791500000.0)   ; 2026-10-08T... UTC, an arbitrary fixed "now"
 
@@ -125,6 +126,60 @@
     (.assertEqual self (live-multiplexer self.home) (os.getpid))
     (with [f (open state "w")] (json.dump {"gateway_state" "stopped" "pid" (os.getpid)} f))
     (.assertIsNone self (live-multiplexer self.home))))
+
+(defclass Heartbeats [Fixture]
+  ;; @lat: [[profile-distribution#Shard host implementation#Tests#Run mode keeps ticker heartbeats]]
+  (defn test-heartbeats [self]
+    (.profile self "ok" [(job (- T0 1))])
+    (.profile self "bad" [(job (- T0 1))])
+    (setv beats [] clock (Clock T0))
+    (defn tick-fn [name home]
+      (write-jobs home [(job (+ T0 86400))])
+      (when (= name "bad") (raise (RuntimeError "boom"))))
+    (setv host (ShardHost (ProfileIndex self.home) tick-fn :mode "run" :max-turns 2
+                          :rescan-seconds 30 :housekeeping-seconds 1e9 :clock clock
+                          :heartbeat-fn (fn [name home error] (.append beats [name error]))))
+    (.step host)
+    (.shutdown host.pool :wait True)
+    (setv by-name (dict beats))
+    (.assertIsNone self (get by-name "ok"))
+    (.assertIn self "boom" (get by-name "bad"))
+    (.assertIsNone self (get by-name "default"))          ; host-level beat
+    ;; host beat at most once a minute
+    (setv n (len (lfor [nm _] beats :if (= nm "default") nm)))
+    (setv clock.t (+ T0 30)) (.step host)
+    (.assertEqual self (len (lfor [nm _] beats :if (= nm "default") nm)) n)
+    (setv clock.t (+ T0 61)) (.step host)
+    (.assertEqual self (len (lfor [nm _] beats :if (= nm "default") nm)) (+ n 1)))
+
+  ;; @lat: [[profile-distribution#Shard host implementation#Tests#Observe mode writes no heartbeats]]
+  (defn test-observe-writes-nothing [self]
+    (.profile self "a" [(job (- T0 1))])
+    (setv beats []
+          host (ShardHost (ProfileIndex self.home) None :mode "observe" :clock (Clock T0)
+                          :heartbeat-fn None))
+    (.step host)
+    (.assertEqual self beats [])))
+
+(defclass NodeState [Fixture]
+  ;; @lat: [[profile-distribution#Shard host implementation#Tests#Node state lives outside HERMES_HOME]]
+  (defn test-node-state-moves-out [self]
+    (setv root (os.path.join self.home "kotoba-root"))
+    (with [f (open (os.path.join self.home "kotoba-node.key") "w")] (.write f "KEY"))
+    (setv (get os.environ "KOTOBA_STATE_ROOT") root)
+    (try
+      (setv state (default-state-dir self.home))
+      (finally (del (get os.environ "KOTOBA_STATE_ROOT"))))
+    (.assertTrue self (.startswith state root))
+    (.assertFalse self (os.path.exists (os.path.join self.home "kotoba-node.key")))
+    (with [f (open (os.path.join state "kotoba-node.key"))]
+      (.assertEqual self (.read f) "KEY"))
+    ;; idempotent, and a second home gets its own directory
+    (setv (get os.environ "KOTOBA_STATE_ROOT") root)
+    (try
+      (.assertEqual self (default-state-dir self.home) state)
+      (.assertNotEqual self (default-state-dir (os.path.join self.home "profiles")) state)
+      (finally (del (get os.environ "KOTOBA_STATE_ROOT"))))))
 
 (defclass Costs [Fixture]
   ;; @lat: [[profile-distribution#Shard host implementation#Tests#Cost report comes from execution history]]
