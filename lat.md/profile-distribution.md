@@ -249,7 +249,7 @@ The first cut used a murakumo.cloud control plane on D1 (cloud-murakumo #289). O
 - **Ownership.** A pinned profile belongs to its pinned node and nothing else is consulted, so it never runs twice; if that node is down, the profile waits. An unpinned profile goes to the highest weighted-rendezvous score among live, eligible nodes (residency and caps), so a node takes over only after the previous owner has been silent for a full TTL. Unpinned failover is best effort under asymmetric partitions; the phase 3 canary uses pins only.
 - **Shard host.** Placement's `allows` is the shard host's `allow` predicate, checked when scheduling and again right before each tick. Changes in the allowed set re-schedule every profile.
 - **Reachability.** `--also-listen HOST:PORT` adds a listener (for example the tailnet address) next to the loopback one.
-- **Operator tool.** `tools/placement_plan.py` builds and signs the manifest. It pins every profile to the workstation and N canaries to a canary node. Canaries have no `.env` secrets, only `local` deliveries, and the lowest measured cost. Profiles whose `.env` holds keys or tokens are `attested`. Dry run on 2026-10-09: 1,015 profiles, 328 attested, 685 canary candidates.
+- **Operator tool.** `tools/placement_plan.hy` builds and signs the manifest. It pins every profile to the workstation and N canaries to a canary node. Canaries have no `.env` secrets, only `local` deliveries, and the lowest measured cost. Profiles whose `.env` holds keys or tokens are `attested`. Dry run on 2026-10-09: 1,015 profiles, 328 attested, 685 canary candidates.
 
 ### Tests
 
