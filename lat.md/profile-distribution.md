@@ -183,13 +183,26 @@ Observe mode recorded 10 would-be fires in 222 s, consistent with the history be
 
 Execution history (`--shard-report`, last 7 days): 958 profiles have runs, 2,779 runs a day, 153,644 busy seconds a day. That is **1.78 turns running on average**. The costliest profile (`mithril`, 142 runs a day at 125 s each) averages 0.2 of a turn. The workstation's load comes from per-profile overhead, not from agent work.
 
+### Switch-over
+
+On 2026-10-09 at 11:56 the workstation's cron ticker and Hermes API server (port 8642) moved from upstream's `ai.hermes.gateway` to the shard host in run mode, as the launchd job `cloud.kotoba.shard-gateway`.
+
+`ai.hermes.gateway` was booted out and disabled (`launchctl disable`), so it does not return at login. The service runs a deployment copy in `~/.kotoba/gateway-hy` (commit in its `SOURCE.edn`) with the upstream job's PATH and file limit. Rolling back takes three commands, listed in the plist header: boot out the shard gateway, enable `ai.hermes.gateway`, bootstrap it.
+
+Checked after the switch:
+
+- **Jobs run.** Execution rows are claimed by the shard gateway's pid and complete. Fires land on time ("late 0.1 s"). Failures in the first runs come from the model provider (murakumo unreachable, OpenRouter fallback HTTP 402), the same outage as before the switch.
+- **Heartbeats.** Per-profile ticker markers are written after each tick. The default home's heartbeat stays under 60 s, and `hermes-cron-guard --fallback-tick` reports `FRESH ... nothing to do`, so it does not start its own ticks.
+- **Live cost while running jobs.** 4–13% CPU (5.7% average), 268 MB, 56 threads, 82 open files. Upstream used 205% CPU, 3.1 GB, 744 threads and 2,786 files that morning.
+
 ### Findings
 
-Issues the measurement surfaced, to resolve before run mode replaces the multiplexer or Phase 3 starts.
+What the measurement and switch surfaced, and how each was resolved.
 
-- **Node key not durable in HERMES_HOME.** `~/.hermes/kotoba-node.key` from 2026-10-08 was gone by 2026-10-09, so the gateway generated a new `did:key`. The cause is not identified. Node identity should move out of the Hermes-managed home (for example `~/.kotoba/`) before peers rely on it.
-- **Delivery without live adapters.** The shard host calls `tick(adapters=None)`. Messaging deliveries then take upstream's fallback path instead of the multiplexer's live platform adapters. This needs checking per platform before run mode takes over.
-- **Ticker heartbeats.** Upstream records a per-profile ticker heartbeat on every tick. With the shard host, profiles with nothing due beat only at housekeeping (≤ 6 h), and upstream health checks may read that as a stale ticker.
+- **Node key not durable in HERMES_HOME.** `~/.hermes/kotoba-node.key` from 2026-10-08 was gone the next day, cause unknown. Resolved: node key, ledger and peer table now live in `~/.kotoba/homes/<id>/` (id from the home's real path), and files found in HERMES_HOME are moved there once.
+- **`profiles/default` shadowed the root home.** The workstation has a `profiles/default` directory with no jobs. The index keyed it as `default`, so the host heartbeat went to `profiles/default/cron/` and the guard saw the root heartbeat age. Resolved: `default` always means HERMES_HOME, as upstream resolves it, and `profiles/default` is skipped.
+- **Ticker heartbeats.** Resolved: run mode writes upstream's markers per profile after each tick and keeps the default home's heartbeat fresh. Profiles with nothing due still beat only at housekeeping (≤ 6 h); accepted.
+- **Delivery without live adapters.** Accepted: no profile on the workstation has messaging-bot credentials, 1,749 of 1,774 enabled jobs deliver `local`, and the rest use the internal bot-chat mailbox that upstream's tick drains.
 
 ### Tests
 
@@ -251,7 +264,7 @@ How the design behaves when parts fail, and what each costs.
 Ordered so the desktop gets relief immediately, and each later phase can be stopped without stranding profiles.
 
 1. **Desktop relief (local, no fleet). Done**, see [[profile-distribution#Desktop relief]]. Status-bar refresh fell from ~2 s to 13 ms, and list rescans from ~2 s to 0.2–0.6 s with the main thread blocked at most 41 ms.
-2. **Shard host mode, measured locally. Done**, see [[profile-distribution#Shard host implementation]]. Observe mode over all 1,015 profiles: 0.12% CPU, 32 MB, 4 threads. Switching the workstation from the upstream multiplexer to `--shard run` is a separate decision, after the delivery and heartbeat findings are checked.
+2. **Shard host mode, measured locally. Done**, see [[profile-distribution#Shard host implementation]]. Observe mode over all 1,015 profiles: 0.12% CPU, 32 MB, 4 threads. Since 2026-10-09 the workstation runs `--shard run` instead of the upstream multiplexer ([[profile-distribution#Shard host implementation#Switch-over]]).
 3. **Leases and reconciler.** Add the profile registry, lease table and reconciler to cloud-murakumo. Canary: 20 `:anonymous` profiles on benjamin, everything else stays on the workstation.
 4. **Replication and secrets.** Continuous ledger push, planned and unplanned handoff, and per-lease kagi reveal. Kill the canary node and confirm recovery within the TTL.
 5. **Fleet rollout.** Supersede the devices.edn rule with an ADR, then move all `:anonymous` profiles. The workstation keeps `:attested` and pinned profiles only.
@@ -264,3 +277,19 @@ Decisions this design needs before Phase 3.
 - **Model access per node.** Profiles whose provider is a hosted API run anywhere. Local-model profiles need nodes with the model loaded, as a placement capability.
 - **Upstream compatibility.** The shard host runs Hermes' `AIAgent` per turn. Whether all profile features (MCP servers, plugins, messaging platforms) work without a resident gateway per profile needs checking during Phase 2.
 - **ADR.** Wording of the decision that supersedes "only the workstation ticks a profile".
+
+#### Run mode keeps ticker heartbeats
+
+After each tick the heartbeat hook receives the profile and its error (None on success). The default home's heartbeat is written at most once a minute.
+
+#### Observe mode writes no heartbeats
+
+Observe mode has no heartbeat hook, so it never touches upstream's markers while the multiplexer owns them.
+
+#### Node state lives outside HERMES_HOME
+
+The node key moves from HERMES_HOME to its `~/.kotoba/homes/<id>` directory once. The move is idempotent, and different homes get different directories.
+
+#### A profiles/default directory never shadows the root home
+
+With both a root `cron/jobs.json` and a `profiles/default` directory, the `default` entry is the root home, and the host heartbeat goes to the root home.

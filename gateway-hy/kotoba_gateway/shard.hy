@@ -67,13 +67,16 @@
 ;; ─── profile index ───────────────────────────────────────────────────────
 
 (defn profile-homes [hermes-home]
-  "[[name home] ...]: the default home plus every named profile directory."
+  "[[name home] ...]: the default home plus every named profile directory.
+  `default` always means HERMES_HOME itself, as upstream resolves it; a stray
+  `profiles/default` directory is not a profile (it exists on the workstation,
+  with no jobs, and used to shadow the root home's entry)."
   (setv out [["default" hermes-home]]
         root (os.path.join hermes-home "profiles"))
   (when (os.path.isdir root)
     (for [name (sorted (os.listdir root))]
       (setv home (os.path.join root name))
-      (when (and (not (.startswith name ".")) (os.path.isdir home))
+      (when (and (not (.startswith name ".")) (!= name "default") (os.path.isdir home))
         (.append out [name home]))))
   out)
 
@@ -280,12 +283,10 @@
     (when (and self.heartbeat-fn
                (or (is self.last-host-beat None)
                    (>= (- now self.last-host-beat) HOST-HEARTBEAT-SECONDS)))
-      (setv entry (.get self.index.entries "default"))
-      (when entry
-        (setv self.last-host-beat now)
-        (try (self.heartbeat-fn "default" (get entry "home") None)
-             (except [e Exception]
-               (print f"[kotoba-shard] host heartbeat failed: {e !r}" :file sys.stderr))))))
+      (setv self.last-host-beat now)
+      (try (self.heartbeat-fn "default" self.index.hermes-home None)
+           (except [e Exception]
+             (print f"[kotoba-shard] host heartbeat failed: {e !r}" :file sys.stderr)))))
 
   (defn step [self]
     "One scheduler pass: rescan if due, fire what's due. Returns seconds to sleep."
@@ -330,6 +331,7 @@
      "rescan_ms" (when self.rescan-ms (round self.rescan-ms 1))
      "fires" self.fires
      "last_tick_error" self.last-error
+     "last_host_heartbeat" self.last-host-beat
      "recent_fires" (list self.recent)
      "uptime_seconds" (round uptime 1)
      "cpu_percent" (round (* 100 (/ (- (get usage "cpu_seconds") self.cpu-at-start) uptime)) 2)

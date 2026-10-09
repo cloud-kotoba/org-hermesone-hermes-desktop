@@ -161,6 +161,22 @@
     (.step host)
     (.assertEqual self beats [])))
 
+(defclass RootHome [Fixture]
+  ;; @lat: [[profile-distribution#Shard host implementation#Tests#A profiles/default directory never shadows the root home]]
+  (defn test-profiles-default-is-not-a-profile [self]
+    (write-jobs self.home [(job (+ T0 10))])
+    (.profile self "default" [(job (+ T0 99))])
+    (setv index (ProfileIndex self.home))
+    (.scan index T0)
+    (.assertEqual self (get index.entries "default" "home") self.home)
+    (.assertEqual self (get index.entries "default" "due") (+ T0 10))
+    (setv beats []
+          host (ShardHost index (fn [n h]) :mode "run" :clock (Clock T0)
+                          :rescan-seconds 30 :housekeeping-seconds 1e9
+                          :heartbeat-fn (fn [name home error] (.append beats home))))
+    (.host-heartbeat host T0)
+    (.assertEqual self beats [self.home])))
+
 (defclass NodeState [Fixture]
   ;; @lat: [[profile-distribution#Shard host implementation#Tests#Node state lives outside HERMES_HOME]]
   (defn test-node-state-moves-out [self]
