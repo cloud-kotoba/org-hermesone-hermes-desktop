@@ -60,8 +60,8 @@ function Agents({
   }, []);
 
   // A switched profile starts its gateway asynchronously, so the pid file the
-  // status reads from isn't written yet when the switch returns. Poll the list
-  // until that profile reports running (or we give up) so the row flips to
+  // status reads from isn't written yet when the switch returns. Poll that
+  // profile until it reports running (or we give up) so the row flips to
   // "Running" on its own instead of only after a manual refresh/revisit.
   const gatewayPollRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -82,9 +82,15 @@ function Agents({
       const tick = async (): Promise<void> => {
         attemptsLeft -= 1;
         try {
-          const list = await window.hermesAPI.listProfiles();
-          setProfiles(list);
-          if (list.find((p) => p.id === name)?.gatewayRunning) {
+          // Ask about this one profile; a full listProfiles() every 700ms
+          // rescans every profile on the install.
+          const summary = await window.hermesAPI.getProfileSummary(name);
+          if (summary) {
+            setProfiles((list) =>
+              list.map((p) => (p.id === name ? { ...p, ...summary } : p)),
+            );
+          }
+          if (summary?.gatewayRunning) {
             settle();
             return;
           }

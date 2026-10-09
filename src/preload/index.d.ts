@@ -50,6 +50,8 @@ import type { AgentCapabilitySnapshot } from "../shared/agent-capabilities";
 import type { SessionLocation } from "../shared/session-location";
 
 interface ElectronAPI {
+  /** Local Hermes API server: Kotoba's Hy gateway or upstream `hermes gateway`. */
+  kotobaGatewayRuntime: "hy" | "hermes";
   process: {
     platform: NodeJS.Platform;
     versions: {
@@ -779,6 +781,11 @@ interface HermesAPI {
       avatar?: string | null;
     }>
   >;
+  /** One profile's info without scanning every profile (null if unknown).
+   *  For the status bar and other single-profile pollers. */
+  getProfileSummary: (
+    id: string,
+  ) => Promise<Awaited<ReturnType<HermesAPI["listProfiles"]>>[number] | null>;
   createProfile: (
     name: string,
     cloneFrom: string | null,

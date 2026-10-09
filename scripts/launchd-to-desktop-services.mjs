@@ -13,22 +13,30 @@ import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { dirname, join } from "node:path";
 
+// Plain Node script linted with the TypeScript preset (see audit-production-dependencies.mjs).
+// eslint-disable-next-line @typescript-eslint/explicit-function-return-type
 export function restartPolicy(keepAlive) {
   if (keepAlive === true) return "always";
   if (keepAlive && typeof keepAlive === "object") {
     // {SuccessfulExit:false} restarts on a non-zero exit; {Crashed:true} on a crash. Both map to
     // on-failure. Any other condition (NetworkState, PathState, ...) was a "keep it up" intent.
-    if (keepAlive.SuccessfulExit === false || keepAlive.Crashed === true) return "on-failure";
+    if (keepAlive.SuccessfulExit === false || keepAlive.Crashed === true)
+      return "on-failure";
     return "always";
   }
   return null;
 }
 
+// eslint-disable-next-line @typescript-eslint/explicit-function-return-type
 export function specFromPlist(p) {
   const restart = restartPolicy(p.KeepAlive);
-  if (!restart) return { error: `${p.Label}: not a KeepAlive agent (a schedule goes to Hermes cron)` };
+  if (!restart)
+    return {
+      error: `${p.Label}: not a KeepAlive agent (a schedule goes to Hermes cron)`,
+    };
   const argv = p.ProgramArguments ?? (p.Program ? [p.Program] : []);
-  if (argv.length === 0) return { error: `${p.Label}: no Program / ProgramArguments` };
+  if (argv.length === 0)
+    return { error: `${p.Label}: no Program / ProgramArguments` };
   const spec = {
     label: p.Label,
     program: p.Program ?? argv[0],
@@ -44,16 +52,24 @@ export function specFromPlist(p) {
   return { spec };
 }
 
+// eslint-disable-next-line @typescript-eslint/explicit-function-return-type
 function readPlist(path) {
   // plutil accepts plists expat-strict parsers reject (e.g. `--` inside an XML comment).
-  return JSON.parse(execFileSync("plutil", ["-convert", "json", "-o", "-", path], { encoding: "utf8" }));
+  return JSON.parse(
+    execFileSync("plutil", ["-convert", "json", "-o", "-", path], {
+      encoding: "utf8",
+    }),
+  );
 }
 
+// eslint-disable-next-line @typescript-eslint/explicit-function-return-type
 function main(argv) {
   const write = argv.includes("--write");
   const plists = argv.filter((a) => a !== "--write");
   if (plists.length === 0) {
-    console.error("usage: launchd-to-desktop-services.mjs [--write] <plist>...");
+    console.error(
+      "usage: launchd-to-desktop-services.mjs [--write] <plist>...",
+    );
     process.exit(2);
   }
   const specs = [];
@@ -69,14 +85,22 @@ function main(argv) {
     console.log(JSON.stringify({ services: specs }, null, 2));
   } else {
     const cfg = join(homedir(), ".hermes", "desktop-services.json");
-    const current = existsSync(cfg) ? JSON.parse(readFileSync(cfg, "utf8")) : { services: [] };
+    const current = existsSync(cfg)
+      ? JSON.parse(readFileSync(cfg, "utf8"))
+      : { services: [] };
     const byLabel = new Map((current.services ?? []).map((s) => [s.label, s]));
     for (const s of specs) byLabel.set(s.label, s);
     mkdirSync(dirname(cfg), { recursive: true });
-    writeFileSync(cfg, JSON.stringify({ services: [...byLabel.values()] }, null, 2) + "\n");
-    console.log(`wrote ${specs.length} service(s) → ${cfg} (${byLabel.size} total)`);
+    writeFileSync(
+      cfg,
+      JSON.stringify({ services: [...byLabel.values()] }, null, 2) + "\n",
+    );
+    console.log(
+      `wrote ${specs.length} service(s) → ${cfg} (${byLabel.size} total)`,
+    );
   }
   process.exit(failed ? 1 : 0);
 }
 
-if (import.meta.url === `file://${process.argv[1]}`) main(process.argv.slice(2));
+if (import.meta.url === `file://${process.argv[1]}`)
+  main(process.argv.slice(2));

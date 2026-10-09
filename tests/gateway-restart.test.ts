@@ -1,4 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+
+// These cover the upstream `hermes gateway` CLI lifecycle, not the Hy gateway.
+process.env.KOTOBA_GATEWAY_RUNTIME = "hermes";
 import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "fs";
 import { join } from "path";
 const {

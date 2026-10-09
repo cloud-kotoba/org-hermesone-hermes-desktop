@@ -1,0 +1,33 @@
+{:schema 1
+ :control-plane "https://murakumo.cloud/api/actions"
+ :repository "cloud-kotoba/org-hermesone-hermes-desktop"
+
+ ;; Declarative intent only. The commands behind each action id are owned by
+ ;; murakumo.cloud (cloud-murakumo src/cloud_murakumo/actions.cljk
+ ;; workflow-catalog) and repeated in the fleet runner's local allowlist
+ ;; (scripts/actions-runner.mjs). This file cannot grant itself execution
+ ;; authority; a job declared here and missing there is refused, not run.
+ ;;
+ ;; CI runs on the murakumo fleet over the tailnet, not on GitHub Actions
+ ;; (ADR-2607300900). GitHub's only role is the push/pull_request webhook
+ ;; that creates the run.
+ :workflows
+ {"ci"
+  {:events ["push" "pull_request" "manual"]
+   :jobs [;; npm ci, typecheck, lint
+          {:name "typecheck" :action "kotoba-desktop/typecheck"}
+          ;; vitest. Red on main today: 28 failures in files this job did not
+          ;; introduce (Sessions, ConfigHealthBanner, ChatPreferences,
+          ;; WebPreviewPanel, ipc-handlers, ssh-env-update).
+          {:name "test" :action "kotoba-desktop/test"}
+          ;; gateway-hy: vendor Hy, compile the hy2py Python view, run the
+          ;; gateway, mesh and Python-interop tests (echo backend, no Hermes).
+          {:name "gateway" :action "kotoba-desktop/gateway"}]
+   ;; Results are read from murakumo, not projected onto GitHub commit
+   ;; statuses (no MURAKUMO_GITHUB_STATUS_TOKEN), same as net-kotobase.
+   :required-statuses []}}
+
+ :github {:role :event-source}
+ :receipts {:authority "murakumo.cloud"
+            :logs :content-addressed
+            :artifacts :content-addressed}}

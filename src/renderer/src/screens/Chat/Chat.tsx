@@ -23,6 +23,7 @@ import { useReasoningEffort } from "./hooks/useReasoningEffort";
 import { useLocalCommands } from "./hooks/useLocalCommands";
 import {
   dashboardChatEnabledForConnection,
+  localChatTransportPreference,
   useDashboardChatTransport,
 } from "./hooks/useDashboardChatTransport";
 import { useI18n } from "../../components/useI18n";
@@ -287,7 +288,11 @@ function Chat({
     import.meta.env.VITE_HERMES_DESKTOP_DASHBOARD_CHAT,
     connectionModeLoaded,
     connectionMode,
-    chatTransportPreference,
+    localChatTransportPreference(
+      connectionMode,
+      chatTransportPreference,
+      window.electron?.kotobaGatewayRuntime,
+    ),
   );
 
   useEffect(() => {

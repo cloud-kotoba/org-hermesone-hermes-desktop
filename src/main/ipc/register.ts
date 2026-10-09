@@ -300,7 +300,12 @@ import {
   readConfigFixLog,
   type IssueCode,
 } from "../config-health";
-import { listProfiles, createProfile, setActiveProfile } from "../profiles";
+import {
+  listProfiles,
+  createProfile,
+  setActiveProfile,
+  getProfileSummary,
+} from "../profiles";
 import {
   setProfileColor,
   setProfileAvatar,
@@ -2712,6 +2717,18 @@ export function registerIpcHandlers(context: IpcContext): void {
       }));
     }
     return listProfiles();
+  });
+  // One profile without scanning the rest: the status bar and the
+  // post-switch gateway poll ask for exactly one, every few seconds.
+  ipcMain.handle("get-profile-summary", async (_event, id: string) => {
+    const conn = getConnectionConfig();
+    if (conn.mode === "ssh" && conn.ssh) {
+      const active = getActiveProfileNameSync();
+      const list = await sshListProfiles(conn.ssh);
+      const p = list.find((x) => x.name === id);
+      return p ? { ...p, id: p.name, isActive: p.name === active } : null;
+    }
+    return getProfileSummary(id);
   });
   ipcMain.handle(
     "create-profile",

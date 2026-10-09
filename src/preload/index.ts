@@ -123,7 +123,15 @@ interface PublicConnectionRegistry {
   connections: PublicConnectionConfig[];
 }
 
+// Main passes `--kotoba-gateway-runtime=<hy|hermes>` via additionalArguments.
+const kotobaGatewayRuntime: "hy" | "hermes" = process.argv.includes(
+  "--kotoba-gateway-runtime=hermes",
+)
+  ? "hermes"
+  : "hy";
+
 const electronAPI = {
+  kotobaGatewayRuntime,
   process: {
     platform: process.platform,
     versions: {
@@ -1062,6 +1070,13 @@ const hermesAPI = {
       avatar?: string | null;
     }>
   > => ipcRenderer.invoke("list-profiles"),
+
+  /** One profile's info without scanning every profile (null if unknown). */
+  getProfileSummary: (
+    id: string,
+  ): Promise<
+    Awaited<ReturnType<typeof hermesAPI.listProfiles>>[number] | null
+  > => ipcRenderer.invoke("get-profile-summary", id),
 
   createProfile: (
     name: string,

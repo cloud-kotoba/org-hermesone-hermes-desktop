@@ -10,9 +10,13 @@ interface StatusInfo {
 /**
  * Bottom system strip — a native desktop-app affordance that surfaces the
  * live connection/gateway state, active model, and skill count that were
- * previously buried. Every field is real (sourced from `listProfiles` +
+ * previously buried. Every field is real (sourced from `getProfileSummary` +
  * `getConnectionConfig`); nothing is fabricated, so if a value is unknown the
  * chip is simply omitted rather than shown with a placeholder.
+ *
+ * It asks for the active profile only. It used to call `listProfiles()` every
+ * 4 s, a full scan of every profile (~1,000 on a busy install) just to show
+ * one row.
  */
 export function StatusBar({
   activeProfile,
@@ -24,14 +28,11 @@ export function StatusBar({
   useEffect(() => {
     let cancelled = false;
     async function load(): Promise<void> {
-      const [profiles, conn] = await Promise.all([
-        window.hermesAPI.listProfiles().catch(() => []),
+      const [active, conn] = await Promise.all([
+        window.hermesAPI.getProfileSummary(activeProfile).catch(() => null),
         window.hermesAPI.getConnectionConfig().catch(() => null),
       ]);
       if (cancelled) return;
-      const active =
-        profiles.find((p) => p.id === activeProfile) ??
-        profiles.find((p) => p.isActive);
       if (!active && !conn) return; // keep last-known on a transient failure
       setInfo({
         mode: conn?.mode ?? "local",

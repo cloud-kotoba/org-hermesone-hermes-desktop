@@ -1,0 +1,3 @@
+# Test-only: Hermes Agent already ships cryptography at runtime
+# (pyproject pins cryptography==50.0.1 on Python >= 3.14).
+cryptography>=44
