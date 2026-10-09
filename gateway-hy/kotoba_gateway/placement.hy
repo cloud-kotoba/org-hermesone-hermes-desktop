@@ -5,7 +5,7 @@
 ;;
 ;;   {"type" "kotoba.placement" "version" n "issued_at" t
 ;;    "nodes"    [{"did" "url" "residency" [...] "caps" [...] "weight" w} ...]
-;;    "profiles" [{"id" "residency" "pin" "caps" "cost"} ...]
+;;    "profiles" [{"id" "residency" "pin" "caps" "cost" "hold"} ...]
 ;;    "signer" operator-did "signature" ...}
 ;;
 ;; Every node holds a copy and adopts another only when it is signed by the
@@ -164,8 +164,11 @@
   ;; -- ownership --
 
   (defn owner [self profile [now None]]
-    "The did that should run `profile` (a manifest entry), or None."
+    "The did that should run `profile` (a manifest entry), or None. A held
+    profile (`\"hold\" reason`) has no owner: no node ticks it until a newer
+    manifest drops the hold. Its jobs.json is untouched."
     (setv now (or now (self.clock)))
+    (when (.get profile "hold") (return None))
     (setv pin (.get profile "pin"))
     (if pin
         (when (.node-entry self pin) pin)
