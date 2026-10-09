@@ -236,6 +236,57 @@ The guard reports a running multiplexer whose pid is alive, and ignores a missin
 
 The cost report derives a profile's cost EMA, fire rate and busy seconds from its `executions.db`.
 
+## Lease client
+
+Phase 3, shard-host side (`gateway-hy/kotoba_gateway/lease.hy`): a node ticks a profile only while it holds that profile's lease from the murakumo control plane.
+
+The control plane is `cloud-murakumo` `profile-leases` (pure placement and leases) and `profiles-http` (D1 adapter), on branch `claude/profile-leases`. Its routes:
+
+- `PUT /api/profiles/registry` and `PUT /api/profiles/nodes/:did` register profiles and nodes (admin bearer `MURAKUMO_PROFILES_ADMIN_TOKEN`).
+- `GET /api/profiles` is the placement view.
+- `POST /api/profiles/nodes/:did/heartbeat` is the node's signed heartbeat.
+
+- **Heartbeat.** Every 120 s (`--lease-interval`) the node posts `observed_at_ms` (strictly growing), the leases it holds and its caps and capacity. The body is signed with the node's Ed25519 key over `murakumo-profile-lease-v1\n<did>\n<origin>\n<sha256(body)>\n`, base64url in `x-murakumo-signature`. The answer is the node's lease set, with `expires_at`.
+- **Local expiry.** A lease's expiry is converted to the local clock from the server's own `now`, counted from when the request was sent. Clock skew cannot stretch a lease, and latency only shortens it.
+- **Fail closed.** A failed heartbeat keeps current leases until they expire, then the profiles stop.
+- **Two checks.** The shard host's `allow` predicate is applied when scheduling and again right before each tick, so a lease lost in between is never acted on. Lease changes re-schedule every indexed profile.
+- **Flags.** `--lease-url https://murakumo.cloud` turns lease mode on, `--node-caps` sets advertised capabilities, and the first heartbeat completes before the first scan.
+- **Registry.** `tools/lease_plan.py` pins every profile to the workstation and N canaries to a canary node. Canaries have no secrets in their `.env`, only `local` deliveries, and the lowest measured cost. Profiles whose `.env` holds keys or tokens are registered `attested`. Dry run on 2026-10-09: 1,015 profiles, 328 attested, 685 canary candidates.
+
+Verified across languages: the Hy client against the real `profiles-http` handler served by `test/profiles_http_dev_server.cljk` (node:sqlite, real migrations). Both nodes got their pinned leases and renewed them, and a signature bound to another origin got `401 bad-signature`. That run caught one real mismatch (a kebab-case `expires-at` on the wire), fixed in the handler.
+
+### Tests
+
+The client's contract with a scripted control plane, and the shard host in lease mode (`gateway-hy/tests/test_lease.hy`).
+
+#### Heartbeats are signed under the lease domain
+
+The signed bytes match the control plane's framing literally, and the heartbeat's signature verifies against the node's did over the body's digest.
+
+#### Expiry is counted on the local clock
+
+With the server clock an hour ahead, a 600 s lease is held for exactly 600 s of local time.
+
+#### Leases run out when the plane is unreachable
+
+A failed heartbeat keeps a lease until its local expiry and then disallows the profile.
+
+#### Observed time strictly grows
+
+Two heartbeats at the same clock reading carry strictly increasing `observed_at_ms`.
+
+#### Lease changes are announced
+
+The change callback fires when the set of leased profiles changes, not on a plain renewal.
+
+#### Only leased profiles are ticked
+
+In run mode with an `allow` predicate, only the leased profile ticks. Gaining a lease and re-applying schedules the other one.
+
+#### A lease lost before the tick is not acted on
+
+A profile whose lease was lost after scheduling is not ticked when its turn comes.
+
 ## Capacity
 
 Spreading 949 cron-bearing profiles over the 9 schedulable Macs gives about 105 profiles per node. Phase 2 showed that idle cost is negligible with the heap (0.12% CPU for all 1,015 profiles) and that actual work averages 1.78 concurrent turns ([[profile-distribution#Shard host implementation#Measurements]]).
@@ -265,7 +316,7 @@ Ordered so the desktop gets relief immediately, and each later phase can be stop
 
 1. **Desktop relief (local, no fleet). Done**, see [[profile-distribution#Desktop relief]]. Status-bar refresh fell from ~2 s to 13 ms, and list rescans from ~2 s to 0.2–0.6 s with the main thread blocked at most 41 ms.
 2. **Shard host mode, measured locally. Done**, see [[profile-distribution#Shard host implementation]]. Observe mode over all 1,015 profiles: 0.12% CPU, 32 MB, 4 threads. Since 2026-10-09 the workstation runs `--shard run` instead of the upstream multiplexer ([[profile-distribution#Shard host implementation#Switch-over]]).
-3. **Leases and reconciler.** Add the profile registry, lease table and reconciler to cloud-murakumo. Canary: 20 `:anonymous` profiles on benjamin, everything else stays on the workstation.
+3. **Leases and reconciler. Implemented**, not yet deployed: control plane in cloud-murakumo (`claude/profile-leases`), lease client in the shard host ([[profile-distribution#Lease client]]). Canary: 20 `:anonymous` profiles on benjamin, everything else pinned to the workstation. Going live needs the cloud-murakumo merge and deploy, the D1 migration, the admin secret, and a Hermes install on benjamin (it has none).
 4. **Replication and secrets.** Continuous ledger push, planned and unplanned handoff, and per-lease kagi reveal. Kill the canary node and confirm recovery within the TTL.
 5. **Fleet rollout.** Supersede the devices.edn rule with an ADR, then move all `:anonymous` profiles. The workstation keeps `:attested` and pinned profiles only.
 

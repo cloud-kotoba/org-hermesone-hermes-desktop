@@ -42,6 +42,7 @@
         kotoba_gateway.ledger [BlockStore Ledger is-valid-cid]
         kotoba_gateway.peers [PeerTable split-list]
         kotoba_gateway.runs [RunRegistry run-event TERMINAL-STATUSES]
+        kotoba_gateway.lease [LeaseClient]
         kotoba_gateway.shard [ProfileIndex ShardHost cost-report live-multiplexer
                               upstream-heartbeat upstream-tick])
 
@@ -111,6 +112,7 @@
           self.peers peers
           self.public-url public-url
           self.shard None
+          self.lease None
           self.runs (RunRegistry)
           self.started-at (time.time)
           self.model (.model-name backend)
@@ -493,7 +495,8 @@
   (defn shard-status [self]
     (setv shard self.gateway.shard)
     (if shard
-        (.send-json self 200 (.status shard))
+        (.send-json self 200 {#** (.status shard)
+                              "lease" (when self.gateway.lease (.status self.gateway.lease))})
         (.send-error-json self 404 "Shard mode is off (start with --shard observe|run)." "shard_off")))
 
   (defn peers-list [self]
@@ -682,6 +685,11 @@
                  :help "run mode even while an upstream multiplexer is live (jobs may run twice)")
   (.add_argument p "--shard-report" :action "store_true"
                  :help "print the per-profile cost report as JSON and exit")
+  ;; Lease mode (phase 3): tick only profiles leased to this node.
+  (.add_argument p "--lease-url" :default (os.environ.get "KOTOBA_LEASE_URL")
+                 :help "murakumo control plane, e.g. https://murakumo.cloud")
+  (.add_argument p "--lease-interval" :type float :default 120)
+  (.add_argument p "--node-caps" :default (os.environ.get "KOTOBA_NODE_CAPS" "python3"))
   (.add_argument p "--nodes" :type int :default 9)
   (.add_argument p "--turns-per-node" :type int :default 5)
   (.parse_args p argv))
@@ -754,12 +762,25 @@
                                       :trusted (split-list (os.environ.get "KOTOBA_TRUSTED_PEERS"))
                                       :public-url (os.environ.get "KOTOBA_PUBLIC_URL")))
   (.start-gossip gateway.peers (int (os.environ.get "KOTOBA_GOSSIP_SECONDS" GOSSIP-SECONDS)))
+  (setv lease None)
+  (when (and args.lease-url (!= args.shard "off"))
+    (setv lease (LeaseClient args.lease-url gateway.node
+                             :caps (split-list args.node-caps)
+                             :capacity {"max_turns" args.max-turns}
+                             :interval args.lease-interval)
+          gateway.lease lease))
   (when (!= args.shard "off")
     (setv gateway.shard (ShardHost (ProfileIndex home)
                                    (if (= args.shard "run") (upstream-tick) None)
                                    :mode args.shard :max-turns args.max-turns
                                    :rescan-seconds args.shard-rescan-seconds
-                                   :heartbeat-fn (when (= args.shard "run") (upstream-heartbeat))))
+                                   :heartbeat-fn (when (= args.shard "run") (upstream-heartbeat))
+                                   :allow (when lease (fn [name] (.allows lease name)))))
+    (when lease
+      ;; First lease set before the first scan, so nothing unleased fires.
+      (.heartbeat lease)
+      (setv lease.on-change (fn [_] (.reapply-leases gateway.shard)))
+      (.start lease))
     (.start gateway.shard)
     (print f"[kotoba-gateway] shard {args.shard}: max-turns={args.max-turns} rescan={args.shard-rescan-seconds}s"
            :file sys.stderr :flush True))

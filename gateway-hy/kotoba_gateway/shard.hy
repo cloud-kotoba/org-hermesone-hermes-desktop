@@ -142,7 +142,8 @@
                   [rescan-seconds DEFAULT-RESCAN-SECONDS]
                   [housekeeping-seconds DEFAULT-HOUSEKEEPING-SECONDS]
                   [clock time.time]
-                  [heartbeat-fn None]]
+                  [heartbeat-fn None]
+                  [allow None]]
     (when (not-in mode #{"observe" "run"})
       (raise (ValueError f"unknown shard mode {mode}")))
     (setv self.index index
@@ -155,6 +156,10 @@
           ;; run mode: (heartbeat-fn name home error-or-None), as upstream's
           ;; ticker loop records per-profile liveness after each tick.
           self.heartbeat-fn heartbeat-fn
+          ;; Lease mode: (allow name) says whether this node holds the
+          ;; profile's lease now. Checked when scheduling AND right before a
+          ;; tick, so a lease lost between the two is never acted on.
+          self.allow (or allow (fn [name] True))
           self.last-host-beat None
           self.last-error None
           self.heap []
@@ -233,6 +238,7 @@
 
   (defn target-due [self name due now]
     (cond
+      (not (self.allow name)) None
       (= self.mode "observe") due
       (is due None) (.housekeeping-due self name now)
       True (min due (.housekeeping-due self name now))))
@@ -240,6 +246,8 @@
   ;; -- firing --
 
   (defn fire [self name due now]
+    (when (not (self.allow name))
+      (return))
     (+= self.fires 1)
     (.append self.recent {"profile" name "due" due "at" now
                           "late_seconds" (round (- now due) 1) "mode" self.mode})
@@ -252,7 +260,17 @@
           (.add self.running name)
           (.submit self.pool self.tick-profile name))))
 
+  (defn reapply-leases [self]
+    "The lease set changed: (re)schedule every indexed profile against it."
+    (setv now (self.clock))
+    (for [[name entry] (list (.items self.index.entries))]
+      (when (not-in name self.running)
+        (.schedule self name (.target-due self name (get entry "due") now)))))
+
   (defn tick-profile [self name]
+    (when (not (self.allow name))
+      (with [self.lock] (.discard self.running name))
+      (return))
     (setv entry (.get self.index.entries name)
           t0 (time.perf_counter)
           error None)
@@ -332,6 +350,7 @@
      "fires" self.fires
      "last_tick_error" self.last-error
      "last_host_heartbeat" self.last-host-beat
+     "scheduled_profiles" (len (sfor n self.index.entries :if (self.allow n) n))
      "recent_fires" (list self.recent)
      "uptime_seconds" (round uptime 1)
      "cpu_percent" (round (* 100 (/ (- (get usage "cpu_seconds") self.cpu-at-start) uptime)) 2)
@@ -399,7 +418,8 @@
   (for [v values] (setv out (if (is out None) v (+ (* (- 1 alpha) out) (* alpha v)))))
   out)
 
-(defn cost-report [hermes-home [nodes 9] [turns-per-node 5] [target-utilization 0.5] [now None]]
+(defn cost-report [hermes-home [nodes 9] [turns-per-node 5] [target-utilization 0.5] [now None]
+                   [top 20]]
   "Per-profile cost (EMA of run duration) and fire rate from execution
   history, and what that means for placement on `nodes` fleet nodes."
   (setv now (or now (time.time))
@@ -428,4 +448,4 @@
    "nodes_needed_at_target" (round (/ busy node-capacity) 2)
    "utilization_on_nodes" (round (/ busy (* 86400 turns-per-node nodes)) 4)
    "profiles_per_node" (round (/ (len (profile-homes hermes-home)) nodes) 1)
-   "costliest" (cut profiles 20)})
+   "costliest" (if top (cut profiles top) profiles)})
