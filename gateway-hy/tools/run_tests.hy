@@ -10,7 +10,7 @@
 (os.chdir ROOT)
 (setv (cut sys.path 0 0) [(os.path.join ROOT ".deps") ROOT])
 
-(setv MODULES ["tests.test_gateway"
+(setv MODULES ["tests.test_gateway" "tests.test_fleet_secrets"
                "tests.test_mesh"
                "tests.test_shard"
                "tests.test_placement"

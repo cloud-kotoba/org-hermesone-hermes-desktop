@@ -280,6 +280,41 @@ One sync pass adopts a newer manifest from a peer, records the peer alive from i
 
 `PUT /v1/placement` adopts a newer operator-signed manifest (409 for the same version). `GET` serves it, also to a node named in the manifest. A peer may not push a manifest (local only).
 
+## Fleet secrets
+
+A profile's secrets reach only the node that runs it, through kagi agent grants and upstream Hermes' `command` secret source. No central store and no plaintext on nodes.
+
+Owner side ([[gateway-hy/kotoba_gateway/fleet_secrets.hy]] is the shared code, `gateway-hy/tools/fleet_secrets.hy` the CLI):
+
+- Each profile's `.env` is the kagi item `hermes-env.<profile>`. The env every profile shares (provider keys: `KOTOBA_API_BASE`, `KOTOBA_API_TOKEN`, `CUSTOM_PROVIDER_MURAKUMO_KEY`, `OPENROUTER_API_KEY`) is `hermes-env.fleet`. Both are in compartment `hermes-fleet`.
+- Each node is a kagi agent principal: `kagi agent request --custody file` on the node (identity in `~/.kagi-agent`, `KAGI_IDENTITY_REF=file://…` because launchd cannot use the keychain), `kagi agent approve --fingerprint … --compartment hermes-fleet --ops reveal,list` on the workstation. Enrolled 2026-10-10: benjamin, issachar, joseph, naphtali, zebulun.
+- The owner grants a node only the items of the profiles placement gives it (`kagi agent grant`), and ungrants on a move, which re-keys the item.
+- `vault.edn` is ciphertext, so `replicate` copies it and the agent registry to every node. A node reads offline from its copy: no server, no VMK.
+
+Node side: a staged profile's `config.yaml` gets `secrets.command` pointing at `gateway-hy/tools/kagi_env.hy`. Upstream runs it once per profile home and keeps the printed KEY=VALUE map in that profile's secret scope, never `os.environ` and never disk. The helper prints the fleet env, then the profile's (a profile value wins), each opened with `kagi agent get` (about 3 s per item, a JVM start), and every reveal lands in the node's own signed audit chain with purpose `hermes-cron:<profile>`.
+
+Verified on joseph (2026-10-10): `hermes cron tick` logged `Command helper: applied 4 secrets`, and a script job saw the three non-provider keys set. Upstream strips `OPENROUTER_API_KEY` from script environments on purpose; agent turns still resolve it through the scope.
+
+Limits: a revoked node keeps values it already read, so rotate after a compromise. Upstream caches the helper's result per home for the process lifetime, so a rotated value reaches a node at its next gateway restart.
+
+kagi needed one fix for this: `agent approve` read request files with a parser capped at 4,096-character tokens, shorter than the post-quantum public keys in every request (kotoba-lang/kagi#39).
+
+### Tests
+
+The node helper's choice of items and its failure behaviour, with kagi replaced by a fake `agent get`.
+
+#### A node gets the fleet env plus only its own profile's env
+
+The helper asks kagi for `hermes-env.fleet` and `hermes-env.<profile>` with the node's agent id and a `hermes-cron:<profile>` purpose. A profile value overrides the fleet's, and an absent or never-put item contributes nothing.
+
+#### A kagi failure is an error, not an empty env
+
+Any `kagi agent get` failure other than an absent item raises, so the helper exits non-zero and upstream records the source as failed and retries, instead of running the job without its secrets.
+
+#### Staging a profile adds the kagi helper and keeps other secret sources
+
+`with-secrets-command` sets `secrets.command` to the helper and leaves the rest of `config.yaml`, other secret sources included, unchanged.
+
 ## Capacity
 
 Spreading 949 cron-bearing profiles over the 9 schedulable Macs gives about 105 profiles per node. Phase 2 showed that idle cost is negligible with the heap (0.12% CPU for all 1,015 profiles) and that actual work averages 1.78 concurrent turns ([[profile-distribution#Shard host implementation#Measurements]]).
