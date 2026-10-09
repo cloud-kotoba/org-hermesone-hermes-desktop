@@ -264,6 +264,10 @@ Manifests signed by another key, tampered, or not newer are refused. An adopted 
 
 Each node allows only the profiles pinned to it. A pin to a node outside the manifest gives no owner. Pins hold even when the pinned node is not seen alive.
 
+#### A held profile has no owner until a newer manifest drops the hold
+
+A profile entry with `hold` has no owner, pinned or not, so no node ticks it. A newer manifest without the hold gives it back to its pin.
+
 #### An unpinned profile moves only after its owner is silent for a TTL
 
 With both nodes live the profiles split. Within the TTL of the other node going silent nothing moves; after a full TTL one node takes all. Stale and future-dated node manifests are not proof of life.
@@ -279,6 +283,12 @@ One sync pass adopts a newer manifest from a peer, records the peer alive from i
 #### The gateway serves and adopts manifests
 
 `PUT /v1/placement` adopts a newer operator-signed manifest (409 for the same version). `GET` serves it, also to a node named in the manifest. A peer may not push a manifest (local only).
+
+### Holds
+
+A manifest can hold profiles: `placement_plan --hold FILE` marks them, and no node ticks them until a newer manifest drops the hold. Their `jobs.json` is untouched, so the desktop and `hermes cron` still show the jobs as scheduled.
+
+On 2026-10-10 the 617 profiles whose every run in four days REFUSEd `unknown bot` were held (manifest version 1791589399421; this PC now ticks 398). Their scripts default `ITONAMI_ROOT` to `~/github/com-junkawasaki`, but the superproject now lives in `~/github/com-junkawasaki/root`, and the registry left at the old path (`manifest/physical-ai-bots.edn`, written 2026-10-07) lists 3 bots instead of 683. Pointing them at `root/` would restart 616 repo measurements, so they stay held until nodes can run them.
 
 ## Fleet secrets
 
