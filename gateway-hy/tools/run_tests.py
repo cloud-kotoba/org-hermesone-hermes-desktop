@@ -14,7 +14,12 @@ sys.path[:0] = [os.path.join(ROOT, ".deps"), ROOT]
 
 import hy  # noqa: E402,F401  (registers the .hy importer)
 
-MODULES = ["tests.test_gateway", "tests.test_mesh", "tests.test_python_interop"]
+MODULES = [
+    "tests.test_gateway",
+    "tests.test_mesh",
+    "tests.test_shard",
+    "tests.test_python_interop",
+]
 
 if __name__ == "__main__":
     suite = unittest.defaultTestLoader.loadTestsFromNames(MODULES)

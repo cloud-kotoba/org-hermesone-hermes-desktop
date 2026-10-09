@@ -154,13 +154,84 @@ A rename followed immediately by `listProfiles()` returns the new name, without 
 
 The startup scan returns only the profiles whose `.env` contains `KOTOBA_API_KEY`, ignoring profiles without one or without an `.env`.
 
+## Shard host implementation
+
+Phase 2, implemented in `gateway-hy/kotoba_gateway/shard.hy`: one heap for every profile's cron schedule, calling upstream's own tick only for profiles that are due.
+
+Upstream's multiplexer visits every served profile every 60 s, whether or not anything is due: a liveness probe, the profile's cron lock, a `jobs.json` read, sweeps and a heartbeat write. The shard host replaces only that loop. Job execution, delivery, misfire grace and fire claims stay upstream's, because a due profile is handed to upstream `tick()` inside that profile's scope (`cron.scheduler_provider._profile_cron_scope`).
+
+- **Index.** `ProfileIndex` stats every profile's `cron/jobs.json` once per rescan (60 s) and re-reads only changed files. A profile's due time is its earliest active job's `next_run_at`; an active job without one counts as due now.
+- **Heap.** One min-heap of `(due, profile)` with lazy invalidation. Idle cost per profile is one heap entry and one `stat` per minute.
+- **Bounded ticks.** At most `--max-turns` profiles tick at once (default half the cores). Upstream itself hands jobs to detached worker processes, so upstream's cron parallel limit still bounds the jobs themselves.
+- **Housekeeping.** In run mode every profile is still ticked at least every 6 h, spread by name, so upstream's sweeps and heartbeats keep running for profiles with nothing due.
+- **Modes.** `--shard observe` indexes, schedules and records what would fire without executing anything, so it is safe next to a live multiplexer. `--shard run` ticks, and exits with 78 while an upstream multiplexer is live (`--shard-force` overrides), so no job runs twice.
+- **Status and cost.** `GET /v1/shard` reports profiles, jobs, heap size, fires, rescan time, CPU and memory. `--shard-report` prints per-profile cost (EMA of run duration) and fire rate from the last 7 days of `cron/executions.db`.
+
+### Measurements
+
+Measured on the workstation, 2026-10-09: the shard host in observe mode over all 1,015 profiles and 1,774 jobs, running next to the live upstream multiplexer for 3.5 minutes.
+
+| | Shard host (observe) | Upstream multiplexer |
+|---|---|---|
+| Profiles / jobs | 1,015 / 1,774 (946 on the heap) | 1,012 served |
+| CPU | 0.12% average, 0.0–0.2% sampled | 5–42% sampled (205% the same morning) |
+| Memory | 32 MB (156 MB peak at startup) | 176–515 MB (3.1 GB the same morning) |
+| Threads / open files | 4 / 18 | 744 / 2,786 |
+| Full rescan | 180–500 ms once a minute | every profile, every 60 s |
+
+Observe mode recorded 10 would-be fires in 222 s, consistent with the history below.
+
+Execution history (`--shard-report`, last 7 days): 958 profiles have runs, 2,779 runs a day, 153,644 busy seconds a day. That is **1.78 turns running on average**. The costliest profile (`mithril`, 142 runs a day at 125 s each) averages 0.2 of a turn. The workstation's load comes from per-profile overhead, not from agent work.
+
+### Findings
+
+Issues the measurement surfaced, to resolve before run mode replaces the multiplexer or Phase 3 starts.
+
+- **Node key not durable in HERMES_HOME.** `~/.hermes/kotoba-node.key` from 2026-10-08 was gone by 2026-10-09, so the gateway generated a new `did:key`. The cause is not identified. Node identity should move out of the Hermes-managed home (for example `~/.kotoba/`) before peers rely on it.
+- **Delivery without live adapters.** The shard host calls `tick(adapters=None)`. Messaging deliveries then take upstream's fallback path instead of the multiplexer's live platform adapters. This needs checking per platform before run mode takes over.
+- **Ticker heartbeats.** Upstream records a per-profile ticker heartbeat on every tick. With the shard host, profiles with nothing due beat only at housekeeping (≤ 6 h), and upstream health checks may read that as a stale ticker.
+
+### Tests
+
+The scheduler's contract, with a temporary HERMES_HOME, a fake clock and a recording tick (`gateway-hy/tests/test_shard.hy`).
+
+#### Earliest active job sets a profile's due time
+
+A profile is due at its earliest active job's `next_run_at`. Disabled and paused jobs are ignored, and an active job without `next_run_at` is due now.
+
+#### Unchanged profiles cost one stat
+
+After the first scan, a rescan re-reads nothing until a `jobs.json` changes, and then re-reads only that profile.
+
+#### Only due profiles are ticked
+
+Run mode ticks a profile only once its due time has passed, then re-reads its `jobs.json` and reschedules it at the advanced due time.
+
+#### Observe mode never executes
+
+Observe mode records due profiles as fires without ever calling the tick.
+
+#### Concurrent ticks are bounded
+
+With six due profiles and `max-turns` 2, no more than two ticks run at once, and all six complete.
+
+#### Run mode refuses a live multiplexer
+
+The guard reports a running multiplexer whose pid is alive, and ignores a missing record or a stopped gateway.
+
+#### Cost report comes from execution history
+
+The cost report derives a profile's cost EMA, fire rate and busy seconds from its `executions.db`.
+
 ## Capacity
 
-Spreading 949 cron-bearing profiles over the 9 schedulable Macs gives about 105 profiles per node. That is tractable once idle cost is a heap entry instead of open handles.
+Spreading 949 cron-bearing profiles over the 9 schedulable Macs gives about 105 profiles per node. Phase 2 showed that idle cost is negligible with the heap (0.12% CPU for all 1,015 profiles) and that actual work averages 1.78 concurrent turns ([[profile-distribution#Shard host implementation#Measurements]]).
 
-Sizing rule: a node's `max-turns` bounds concurrent work, and its sustainable load is `Σ(cost EMA × fire rate)` over its profiles, which must stay below `max-turns` with headroom. The reconciler enforces this via queue latency rather than up-front estimates, because per-profile cost is not measured yet. Phase 1 measures it.
+So compute is not what forces distribution: one node at 50% of five turns could carry today's load. Distribution buys isolation (one bad profile or node doesn't stall the rest), availability when the workstation sleeps, and headroom for growth. Placement weights should still follow measured cost, because three profiles (`mithril`, `kotobase-ldbc`, `otent`) account for a fifth of all busy time.
 
-Upstream per-profile overhead was about 3 threads and 3 file descriptors per served profile at zero activity, plus 205% CPU across 1,012 profiles. The heap design targets under 1% CPU at idle for 100 profiles; Phase 1 checks that number.
+Sizing rule: a node's `max-turns` bounds concurrent work, and its sustainable load is `Σ(cost EMA × fire rate)` over its profiles, which must stay below `max-turns` with headroom. The reconciler enforces this via queue latency, seeded with the measured cost EMAs from `--shard-report`.
+
+Upstream's idle overhead is about 0.7 threads and 2.8 open files per served profile. The heap design held all 1,015 profiles at 0.12% CPU, 4 threads and 18 files.
 
 ## Failure modes
 
@@ -180,7 +251,7 @@ How the design behaves when parts fail, and what each costs.
 Ordered so the desktop gets relief immediately, and each later phase can be stopped without stranding profiles.
 
 1. **Desktop relief (local, no fleet). Done**, see [[profile-distribution#Desktop relief]]. Status-bar refresh fell from ~2 s to 13 ms, and list rescans from ~2 s to 0.2–0.6 s with the main thread blocked at most 41 ms.
-2. **Shard host mode, measured locally.** Implement `--shard` (heap scheduler, lazy agents) in the Hy gateway. Run it on the workstation with all profiles in place of the upstream multiplexer, and measure idle CPU, memory, and per-profile cost EMA.
+2. **Shard host mode, measured locally. Done**, see [[profile-distribution#Shard host implementation]]. Observe mode over all 1,015 profiles: 0.12% CPU, 32 MB, 4 threads. Switching the workstation from the upstream multiplexer to `--shard run` is a separate decision, after the delivery and heartbeat findings are checked.
 3. **Leases and reconciler.** Add the profile registry, lease table and reconciler to cloud-murakumo. Canary: 20 `:anonymous` profiles on benjamin, everything else stays on the workstation.
 4. **Replication and secrets.** Continuous ledger push, planned and unplanned handoff, and per-lease kagi reveal. Kill the canary node and confirm recovery within the TTL.
 5. **Fleet rollout.** Supersede the devices.edn rule with an ADR, then move all `:anonymous` profiles. The workstation keeps `:attested` and pinned profiles only.

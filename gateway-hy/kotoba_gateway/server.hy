@@ -23,6 +23,7 @@
 ;;   GET  /v1/sessions/{id}/head     signed session head
 ;;   POST /v1/sessions/{id}/pull     replicate a session from a peer (local only)
 ;;   POST /v1/runs {"peer": did}     delegate a run to a peer (local only)
+;;   GET  /v1/shard                  shard host status (with --shard)
 ;;
 ;; Callers authenticate either as the local desktop (Bearer API_SERVER_KEY) or
 ;; as a trusted node (did:key-signed request headers).
@@ -40,7 +41,8 @@
         kotoba_gateway.identity [NodeIdentity verify-request]
         kotoba_gateway.ledger [BlockStore Ledger is-valid-cid]
         kotoba_gateway.peers [PeerTable split-list]
-        kotoba_gateway.runs [RunRegistry run-event TERMINAL-STATUSES])
+        kotoba_gateway.runs [RunRegistry run-event TERMINAL-STATUSES]
+        kotoba_gateway.shard [ProfileIndex ShardHost cost-report live-multiplexer upstream-tick])
 
 (setv MAX-BODY-BYTES (* 32 1024 1024)
       KEEPALIVE-SECONDS 15
@@ -107,6 +109,7 @@
           self.ledger ledger
           self.peers peers
           self.public-url public-url
+          self.shard None
           self.runs (RunRegistry)
           self.started-at (time.time)
           self.model (.model-name backend)
@@ -322,6 +325,7 @@
           block-match (.match BLOCK-PATH-RE path)
           session-match (.match SESSION-PATH-RE path))
     (cond
+      (and (= method "GET") (= path "/v1/shard")) (.shard-status self)
       (and (= method "GET") (= path "/v1/peers")) (.peers-list self)
       (and (= method "POST") (= path "/v1/peers")) (.peers-add self)
       (and (= method "GET") block-match) (.block self (.group block-match 1))
@@ -484,6 +488,12 @@
                         "local_only")
       (return True))
     False)
+
+  (defn shard-status [self]
+    (setv shard self.gateway.shard)
+    (if shard
+        (.send-json self 200 (.status shard))
+        (.send-error-json self 404 "Shard mode is off (start with --shard observe|run)." "shard_off")))
 
   (defn peers-list [self]
     (setv g self.gateway)
@@ -661,6 +671,18 @@
   (.add_argument p "--backend" :default (os.environ.get "KOTOBA_GATEWAY_BACKEND" "hermes")
                  :choices ["hermes" "echo"])
   (.add_argument p "--pid-file" :default (os.environ.get "KOTOBA_GATEWAY_PID_FILE"))
+  ;; Shard host (profile distribution phase 2): tick only due profiles.
+  (.add_argument p "--shard" :default (os.environ.get "KOTOBA_SHARD" "off")
+                 :choices ["off" "observe" "run"])
+  (.add_argument p "--max-turns" :type int
+                 :default (int (os.environ.get "KOTOBA_SHARD_MAX_TURNS" (max 1 (// (or (os.cpu_count) 2) 2)))))
+  (.add_argument p "--shard-rescan-seconds" :type float :default 60)
+  (.add_argument p "--shard-force" :action "store_true"
+                 :help "run mode even while an upstream multiplexer is live (jobs may run twice)")
+  (.add_argument p "--shard-report" :action "store_true"
+                 :help "print the per-profile cost report as JSON and exit")
+  (.add_argument p "--nodes" :type int :default 9)
+  (.add_argument p "--turns-per-node" :type int :default 5)
   (.parse_args p argv))
 
 (defn make-server [host port backend api-key [state-dir None] [seeds None] [trusted None]
@@ -687,6 +709,16 @@
         home (os.path.expanduser (os.environ.get "HERMES_HOME" "~/.hermes"))
         api-key (or (os.environ.get "API_SERVER_KEY")
                     (.get (read-env-file (os.path.join home ".env")) "API_SERVER_KEY")))
+  (when args.shard-report
+    (print (json.dumps (cost-report home :nodes args.nodes :turns-per-node args.turns-per-node)
+                       :indent 2 :ensure_ascii False))
+    (return 0))
+  (when (and (= args.shard "run") (not args.shard-force))
+    (setv mux (live-multiplexer home))
+    (when mux
+      (print f"[kotoba-gateway] Refusing --shard run: upstream multiplexer pid {mux} is live and ticks the same profiles. Stop it first, or use --shard observe."
+             :file sys.stderr)
+      (return 78)))
   (when (and (not api-key) (not-in args.host LOOPBACK))
     (print "[kotoba-gateway] Refusing to bind a non-loopback host without API_SERVER_KEY."
            :file sys.stderr)
@@ -698,6 +730,14 @@
                                       :trusted (split-list (os.environ.get "KOTOBA_TRUSTED_PEERS"))
                                       :public-url (os.environ.get "KOTOBA_PUBLIC_URL")))
   (.start-gossip gateway.peers (int (os.environ.get "KOTOBA_GOSSIP_SECONDS" GOSSIP-SECONDS)))
+  (when (!= args.shard "off")
+    (setv gateway.shard (ShardHost (ProfileIndex home)
+                                   (if (= args.shard "run") (upstream-tick) None)
+                                   :mode args.shard :max-turns args.max-turns
+                                   :rescan-seconds args.shard-rescan-seconds))
+    (.start gateway.shard)
+    (print f"[kotoba-gateway] shard {args.shard}: max-turns={args.max-turns} rescan={args.shard-rescan-seconds}s"
+           :file sys.stderr :flush True))
   (write-pid-file args.pid-file)
   (defn shutdown [signum frame]
     (.start (threading.Thread :target server.shutdown :daemon True)))
