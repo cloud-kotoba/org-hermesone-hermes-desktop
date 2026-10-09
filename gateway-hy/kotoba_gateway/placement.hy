@@ -100,7 +100,8 @@
           self.seen {}             ; did -> local time its signed manifest was last fresh
           self.last-allowed (frozenset)
           self.last-error None)
-    (.load self))
+    (.load self)
+    (setv self.last-allowed (.allowed-set self)))
 
   ;; -- manifest --
 
@@ -183,7 +184,13 @@
                          (get p "id")))))
 
   (defn allows [self profile-id [now None]]
-    (in profile-id (.allowed-set self now)))
+    "Without `now`, answers from the set cached by `recompute` (run on adopt
+    and on every sync). The shard host asks once per profile per pass;
+    recomputing here made each pass O(profiles^2) -- a million ownership
+    checks on the workstation's 1,015 profiles."
+    (if (is now None)
+        (in profile-id self.last-allowed)
+        (in profile-id (.allowed-set self now))))
 
   (defn recompute [self]
     (setv allowed (.allowed-set self))
