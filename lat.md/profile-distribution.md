@@ -40,7 +40,7 @@ Each shard host is the Hy gateway (`gateway-hy/`) in a new `--shard` mode. It is
 
 ### Control plane
 
-Owns the profile registry and the lease table, and runs the reconciler that keeps every eligible profile leased to exactly one live node.
+Superseded by [[profile-distribution#Placement]]: placement is an operator-signed manifest held by the nodes, not a murakumo.cloud service. The endpoints below were the first design.
 
 Proposed endpoints, next to `/api/actions` in cloud-murakumo:
 
@@ -236,56 +236,48 @@ The guard reports a running multiplexer whose pid is alive, and ignores a missin
 
 The cost report derives a profile's cost EMA, fire rate and busy seconds from its `executions.db`.
 
-## Lease client
+## Placement
 
-Phase 3, shard-host side (`gateway-hy/kotoba_gateway/lease.hy`): a node ticks a profile only while it holds that profile's lease from the murakumo control plane.
+Phase 3, as built (`gateway-hy/kotoba_gateway/placement.hy`): an operator-signed placement manifest decides which node runs which profile, with no central store.
 
-The control plane is `cloud-murakumo` `profile-leases` (pure placement and leases) and `profiles-http` (D1 adapter), on branch `claude/profile-leases`. Its routes:
+The first cut used a murakumo.cloud control plane on D1 (cloud-murakumo #289). On 2026-10-09 the owner ruled out D1, R2 and KV for this, so it was reverted (#290) before any deploy or migration. Placement now lives in the fleet itself.
 
-- `PUT /api/profiles/registry` and `PUT /api/profiles/nodes/:did` register profiles and nodes (admin bearer `MURAKUMO_PROFILES_ADMIN_TOKEN`).
-- `GET /api/profiles` is the placement view.
-- `POST /api/profiles/nodes/:did/heartbeat` is the node's signed heartbeat.
-
-- **Heartbeat.** Every 120 s (`--lease-interval`) the node posts `observed_at_ms` (strictly growing), the leases it holds and its caps and capacity. The body is signed with the node's Ed25519 key over `murakumo-profile-lease-v1\n<did>\n<origin>\n<sha256(body)>\n`, base64url in `x-murakumo-signature`. The answer is the node's lease set, with `expires_at`.
-- **Local expiry.** A lease's expiry is converted to the local clock from the server's own `now`, counted from when the request was sent. Clock skew cannot stretch a lease, and latency only shortens it.
-- **Fail closed.** A failed heartbeat keeps current leases until they expire, then the profiles stop.
-- **Two checks.** The shard host's `allow` predicate is applied when scheduling and again right before each tick, so a lease lost in between is never acted on. Lease changes re-schedule every indexed profile.
-- **Flags.** `--lease-url https://murakumo.cloud` turns lease mode on, `--node-caps` sets advertised capabilities, and the first heartbeat completes before the first scan.
-- **Registry.** `tools/lease_plan.py` pins every profile to the workstation and N canaries to a canary node. Canaries have no secrets in their `.env`, only `local` deliveries, and the lowest measured cost. Profiles whose `.env` holds keys or tokens are registered `attested`. Dry run on 2026-10-09: 1,015 profiles, 328 attested, 685 canary candidates.
-
-Verified across languages: the Hy client against the real `profiles-http` handler served by `test/profiles_http_dev_server.cljk` (node:sqlite, real migrations). Both nodes got their pinned leases and renewed them, and a signature bound to another origin got `401 bad-signature`. That run caught one real mismatch (a kebab-case `expires-at` on the wire), fixed in the handler.
+- **Manifest.** `{type "kotoba.placement", version, issued_at, nodes [{did url residency caps weight}], profiles [{id residency pin caps cost}]}`, signed by the operator key (`~/.kotoba/operator.key`). A node adopts a manifest only if it is signed by the trusted `--operator-did` and has a higher version. The manifest is persisted in the node's state directory.
+- **Distribution.** The operator publishes with a local-only `PUT /v1/placement`. Nodes pull `GET /v1/placement` from the nodes the manifest lists, every `--placement-interval` (60 s), and adopt newer versions. No server is the source of truth: any node holding the newest signed manifest can hand it on.
+- **Trust.** Nodes named in the current manifest may call each other with signed requests, without separate trust entries.
+- **Liveness.** A node is alive while its own signed node manifest (`/.well-known/kotoba-node`, `issued_at`) is fresh within 600 s, as observed by each peer. Stale or future-dated manifests prove nothing.
+- **Ownership.** A pinned profile belongs to its pinned node and nothing else is consulted, so it never runs twice; if that node is down, the profile waits. An unpinned profile goes to the highest weighted-rendezvous score among live, eligible nodes (residency and caps), so a node takes over only after the previous owner has been silent for a full TTL. Unpinned failover is best effort under asymmetric partitions; the phase 3 canary uses pins only.
+- **Shard host.** Placement's `allows` is the shard host's `allow` predicate, checked when scheduling and again right before each tick. Changes in the allowed set re-schedule every profile.
+- **Reachability.** `--also-listen HOST:PORT` adds a listener (for example the tailnet address) next to the loopback one.
+- **Operator tool.** `tools/placement_plan.py` builds and signs the manifest. It pins every profile to the workstation and N canaries to a canary node. Canaries have no `.env` secrets, only `local` deliveries, and the lowest measured cost. Profiles whose `.env` holds keys or tokens are `attested`. Dry run on 2026-10-09: 1,015 profiles, 328 attested, 685 canary candidates.
 
 ### Tests
 
-The client's contract with a scripted control plane, and the shard host in lease mode (`gateway-hy/tests/test_lease.hy`).
+The placement contract (`gateway-hy/tests/test_placement.hy`).
 
-#### Heartbeats are signed under the lease domain
+#### Only newer operator-signed manifests are adopted
 
-The signed bytes match the control plane's framing literally, and the heartbeat's signature verifies against the node's did over the body's digest.
+Manifests signed by another key, tampered, or not newer are refused. An adopted manifest is persisted and reloaded.
 
-#### Expiry is counted on the local clock
+#### A pinned profile has exactly one owner
 
-With the server clock an hour ahead, a 600 s lease is held for exactly 600 s of local time.
+Each node allows only the profiles pinned to it. A pin to a node outside the manifest gives no owner. Pins hold even when the pinned node is not seen alive.
 
-#### Leases run out when the plane is unreachable
+#### An unpinned profile moves only after its owner is silent for a TTL
 
-A failed heartbeat keeps a lease until its local expiry and then disallows the profile.
+With both nodes live the profiles split. Within the TTL of the other node going silent nothing moves; after a full TTL one node takes all. Stale and future-dated node manifests are not proof of life.
 
-#### Observed time strictly grows
+#### Residency and capabilities limit owners
 
-Two heartbeats at the same clock reading carry strictly increasing `observed_at_ms`.
+Attested profiles go only to attested nodes, and a profile needing a capability no node has gets no owner.
 
-#### Lease changes are announced
+#### Manifests and liveness travel between peers
 
-The change callback fires when the set of leased profiles changes, not on a plain renewal.
+One sync pass adopts a newer manifest from a peer, records the peer alive from its node manifest, and announces the changed allowed set.
 
-#### Only leased profiles are ticked
+#### The gateway serves and adopts manifests
 
-In run mode with an `allow` predicate, only the leased profile ticks. Gaining a lease and re-applying schedules the other one.
-
-#### A lease lost before the tick is not acted on
-
-A profile whose lease was lost after scheduling is not ticked when its turn comes.
+`PUT /v1/placement` adopts a newer operator-signed manifest (409 for the same version). `GET` serves it, also to a node named in the manifest. A peer may not push a manifest (local only).
 
 ## Capacity
 
@@ -316,7 +308,7 @@ Ordered so the desktop gets relief immediately, and each later phase can be stop
 
 1. **Desktop relief (local, no fleet). Done**, see [[profile-distribution#Desktop relief]]. Status-bar refresh fell from ~2 s to 13 ms, and list rescans from ~2 s to 0.2–0.6 s with the main thread blocked at most 41 ms.
 2. **Shard host mode, measured locally. Done**, see [[profile-distribution#Shard host implementation]]. Observe mode over all 1,015 profiles: 0.12% CPU, 32 MB, 4 threads. Since 2026-10-09 the workstation runs `--shard run` instead of the upstream multiplexer ([[profile-distribution#Shard host implementation#Switch-over]]).
-3. **Leases and reconciler. Implemented**, not yet deployed: control plane in cloud-murakumo (`claude/profile-leases`), lease client in the shard host ([[profile-distribution#Lease client]]). Canary: 20 `:anonymous` profiles on benjamin, everything else pinned to the workstation. Going live needs the cloud-murakumo merge and deploy, the D1 migration, the admin secret, and a Hermes install on benjamin (it has none).
+3. **Placement. Implemented in the fleet**, no central store ([[profile-distribution#Placement]]). Canary: 20 `:anonymous` profiles pinned to benjamin, everything else pinned to the workstation.
 4. **Replication and secrets.** Continuous ledger push, planned and unplanned handoff, and per-lease kagi reveal. Kill the canary node and confirm recovery within the TTL.
 5. **Fleet rollout.** Supersede the devices.edn rule with an ADR, then move all `:anonymous` profiles. The workstation keeps `:attested` and pinned profiles only.
 

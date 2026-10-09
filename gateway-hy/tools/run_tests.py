@@ -18,7 +18,7 @@ MODULES = [
     "tests.test_gateway",
     "tests.test_mesh",
     "tests.test_shard",
-    "tests.test_lease",
+    "tests.test_placement",
     "tests.test_python_interop",
 ]
 

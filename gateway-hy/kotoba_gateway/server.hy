@@ -24,6 +24,8 @@
 ;;   POST /v1/sessions/{id}/pull     replicate a session from a peer (local only)
 ;;   POST /v1/runs {"peer": did}     delegate a run to a peer (local only)
 ;;   GET  /v1/shard                  shard host status (with --shard)
+;;   GET  /v1/placement              operator-signed placement manifest
+;;   PUT  /v1/placement              adopt a newer manifest (local only)
 ;;
 ;; Callers authenticate either as the local desktop (Bearer API_SERVER_KEY) or
 ;; as a trusted node (did:key-signed request headers).
@@ -42,7 +44,7 @@
         kotoba_gateway.ledger [BlockStore Ledger is-valid-cid]
         kotoba_gateway.peers [PeerTable split-list]
         kotoba_gateway.runs [RunRegistry run-event TERMINAL-STATUSES]
-        kotoba_gateway.lease [LeaseClient]
+        kotoba_gateway.placement [Placement]
         kotoba_gateway.shard [ProfileIndex ShardHost cost-report live-multiplexer
                               upstream-heartbeat upstream-tick])
 
@@ -112,7 +114,7 @@
           self.peers peers
           self.public-url public-url
           self.shard None
-          self.lease None
+          self.placement None
           self.runs (RunRegistry)
           self.started-at (time.time)
           self.model (.model-name backend)
@@ -129,7 +131,11 @@
         "local")
       (.get headers "X-Kotoba-Node")
       (do (setv did (verify-request headers method path body))
-          (when (and did (.is-trusted self.peers did)) did))
+          ;; Trusted: explicitly, or as a node named in the operator-signed
+          ;; placement manifest.
+          (when (and did (or (.is-trusted self.peers did)
+                             (and self.placement (.is-member self.placement did))))
+            did))
       (not self.api-key) "local"
       True None))
 
@@ -329,6 +335,8 @@
           session-match (.match SESSION-PATH-RE path))
     (cond
       (and (= method "GET") (= path "/v1/shard")) (.shard-status self)
+      (and (= method "GET") (= path "/v1/placement")) (.placement-get self)
+      (and (= method "PUT") (= path "/v1/placement")) (.placement-put self)
       (and (= method "GET") (= path "/v1/peers")) (.peers-list self)
       (and (= method "POST") (= path "/v1/peers")) (.peers-add self)
       (and (= method "GET") block-match) (.block self (.group block-match 1))
@@ -352,10 +360,11 @@
 
   (defn do_GET [self] (.dispatch self "GET"))
   (defn do_POST [self] (.dispatch self "POST"))
+  (defn do_PUT [self] (.dispatch self "PUT"))
 
   (defn do_OPTIONS [self]
     (.send_response self 204)
-    (.send_header self "Allow" "GET, POST, OPTIONS")
+    (.send_header self "Allow" "GET, POST, PUT, OPTIONS")
     (.send_header self "Content-Length" "0")
     (.end_headers self))
 
@@ -496,8 +505,28 @@
     (setv shard self.gateway.shard)
     (if shard
         (.send-json self 200 {#** (.status shard)
-                              "lease" (when self.gateway.lease (.status self.gateway.lease))})
+                              "placement" (when self.gateway.placement
+                                            (.status self.gateway.placement))})
         (.send-error-json self 404 "Shard mode is off (start with --shard observe|run)." "shard_off")))
+
+  (defn placement-get [self]
+    (setv pl self.gateway.placement)
+    (cond
+      (is pl None) (.send-error-json self 404 "Placement is off (start with --operator-did)." "placement_off")
+      (is pl.manifest None) (.send-error-json self 404 "No placement manifest adopted yet." "no_manifest")
+      True (.send-json self 200 pl.manifest)))
+
+  (defn placement-put [self]
+    (when (.local-only self) (return))
+    (setv pl self.gateway.placement)
+    (when (is pl None)
+      (return (.send-error-json self 404 "Placement is off (start with --operator-did)." "placement_off")))
+    (setv doc (.read-json self))
+    (when (is doc None) (return))
+    (if (.adopt pl doc)
+        (.send-json self 200 {"adopted" (get doc "version") "allowed" (len (.allowed-set pl))})
+        (.send-error-json self 409 "Not adopted: needs the operator's signature and a higher version."
+                          "manifest_rejected")))
 
   (defn peers-list [self]
     (setv g self.gateway)
@@ -685,11 +714,13 @@
                  :help "run mode even while an upstream multiplexer is live (jobs may run twice)")
   (.add_argument p "--shard-report" :action "store_true"
                  :help "print the per-profile cost report as JSON and exit")
-  ;; Lease mode (phase 3): tick only profiles leased to this node.
-  (.add_argument p "--lease-url" :default (os.environ.get "KOTOBA_LEASE_URL")
-                 :help "murakumo control plane, e.g. https://murakumo.cloud")
-  (.add_argument p "--lease-interval" :type float :default 120)
-  (.add_argument p "--node-caps" :default (os.environ.get "KOTOBA_NODE_CAPS" "python3"))
+  ;; Placement (phase 3): tick only profiles the operator-signed manifest
+  ;; places on this node. No central store: manifests travel over the mesh.
+  (.add_argument p "--operator-did" :default (os.environ.get "KOTOBA_OPERATOR_DID")
+                 :help "did:key whose signature makes a placement manifest valid")
+  (.add_argument p "--placement-interval" :type float :default 60)
+  (.add_argument p "--also-listen" :action "append" :default []
+                 :help "extra HOST:PORT to serve on (e.g. the tailnet address)")
   (.add_argument p "--nodes" :type int :default 9)
   (.add_argument p "--turns-per-node" :type int :default 5)
   (.parse_args p argv))
@@ -762,28 +793,35 @@
                                       :trusted (split-list (os.environ.get "KOTOBA_TRUSTED_PEERS"))
                                       :public-url (os.environ.get "KOTOBA_PUBLIC_URL")))
   (.start-gossip gateway.peers (int (os.environ.get "KOTOBA_GOSSIP_SECONDS" GOSSIP-SECONDS)))
-  (setv lease None)
-  (when (and args.lease-url (!= args.shard "off"))
-    (setv lease (LeaseClient args.lease-url gateway.node
-                             :caps (split-list args.node-caps)
-                             :capacity {"max_turns" args.max-turns}
-                             :interval args.lease-interval)
-          gateway.lease lease))
+  (setv placement None)
+  (when args.operator-did
+    (setv placement (Placement gateway.node args.operator-did
+                               (os.path.join (default-state-dir home) "placement.json")
+                               :interval args.placement-interval)
+          gateway.placement placement))
   (when (!= args.shard "off")
     (setv gateway.shard (ShardHost (ProfileIndex home)
                                    (if (= args.shard "run") (upstream-tick) None)
                                    :mode args.shard :max-turns args.max-turns
                                    :rescan-seconds args.shard-rescan-seconds
                                    :heartbeat-fn (when (= args.shard "run") (upstream-heartbeat))
-                                   :allow (when lease (fn [name] (.allows lease name)))))
-    (when lease
-      ;; First lease set before the first scan, so nothing unleased fires.
-      (.heartbeat lease)
-      (setv lease.on-change (fn [_] (.reapply-leases gateway.shard)))
-      (.start lease))
+                                   :allow (when placement (fn [name] (.allows placement name)))))
+    (when placement
+      (setv placement.on-change (fn [_] (.reapply-leases gateway.shard))))
     (.start gateway.shard)
     (print f"[kotoba-gateway] shard {args.shard}: max-turns={args.max-turns} rescan={args.shard-rescan-seconds}s"
            :file sys.stderr :flush True))
+  (when placement
+    (print f"[kotoba-gateway] placement: operator={args.operator-did} version={(.version placement)} allowed={(len (.allowed-set placement))}"
+           :file sys.stderr :flush True)
+    (.start placement))
+  ;; Extra listeners (same handler), e.g. the tailnet address for peers.
+  (for [spec args.also-listen]
+    (setv [h pt] (.rsplit spec ":" 1)
+          extra (ThreadingHTTPServer #(h (int pt)) server.RequestHandlerClass))
+    (setv extra.daemon_threads True)
+    (.start (threading.Thread :target extra.serve_forever :daemon True))
+    (print f"[kotoba-gateway] also listening on http://{h}:{pt}" :file sys.stderr :flush True))
   (write-pid-file args.pid-file)
   (defn shutdown [signum frame]
     (.start (threading.Thread :target server.shutdown :daemon True)))

@@ -1,9 +1,15 @@
-"""Build the profile registry for the murakumo lease control plane.
+"""Build, sign and publish the placement manifest (no central store).
 
-    python tools/lease_plan.py --home ~/.hermes --workstation did:key:... \\
-        --canary 20 --canary-node did:key:...            # dry run: print the plan
-    ... --apply --lease-url https://murakumo.cloud        # PUT it (admin token
-                                                          # in MURAKUMO_PROFILES_ADMIN_TOKEN)
+    python tools/placement_plan.py --home ~/.hermes \\
+        --node did:key:WS=http://100.108.223.94:8642:anonymous,attested \\
+        --node did:key:BJ=http://100.75.169.8:8642:anonymous \\
+        --workstation did:key:WS --canary 20 --canary-node did:key:BJ   # dry run
+    ... --apply http://127.0.0.1:8642      # PUT /v1/placement on that gateway
+                                           # (bearer API_SERVER_KEY from HERMES_HOME/.env)
+
+The manifest is signed with the operator key (~/.kotoba/operator.key, created
+on first use; its did is what nodes trust via --operator-did) and carries a
+millisecond version, so a newer plan always supersedes an older one.
 
 Every profile is pinned to the workstation except the canaries, which are
 pinned to the canary node. Canaries are chosen to be safe to move first: no
@@ -78,39 +84,66 @@ def plan(home, workstation, canary_n, canary_node):
                         "history_profiles": full["profiles_with_history"]}}
 
 
-def apply(lease_url, registry):
-    token = os.environ.get("MURAKUMO_PROFILES_ADMIN_TOKEN")
-    if not token:
-        raise SystemExit("MURAKUMO_PROFILES_ADMIN_TOKEN is required for --apply")
+def parse_node(spec):
+    """did=url:residency1,residency2 -> manifest node entry."""
+    did, rest = spec.split("=", 1)
+    url, _, residency = rest.rpartition(":") if rest.count(":") > 2 else (rest, "", "")
+    return {"did": did, "url": url, "residency": [r for r in residency.split(",") if r] or ["anonymous"],
+            "caps": ["python3"]}
+
+
+def api_key(home):
+    key = os.environ.get("API_SERVER_KEY")
+    if key:
+        return key
+    try:
+        for line in open(os.path.join(home, ".env"), encoding="utf-8"):
+            if line.strip().startswith("API_SERVER_KEY="):
+                return line.split("=", 1)[1].strip().strip("'\"")
+    except OSError:
+        pass
+    raise SystemExit("API_SERVER_KEY not found (env or HERMES_HOME/.env)")
+
+
+def publish(gateway, home, manifest):
     req = urllib.request.Request(
-        lease_url.rstrip("/") + "/api/profiles/registry", method="PUT",
-        data=json.dumps({"profiles": registry}).encode(),
-        headers={"authorization": f"Bearer {token}", "content-type": "application/json"})
-    with urllib.request.urlopen(req, timeout=60) as res:
+        gateway.rstrip("/") + "/v1/placement", method="PUT", data=json.dumps(manifest).encode(),
+        headers={"authorization": f"Bearer {api_key(home)}", "content-type": "application/json"})
+    with urllib.request.urlopen(req, timeout=30) as res:
         return json.loads(res.read())
 
 
 def main(argv=None):
+    from kotoba_gateway.identity import NodeIdentity
+    from kotoba_gateway.placement import build_manifest
+
     p = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     p.add_argument("--home", default=os.path.expanduser(os.environ.get("HERMES_HOME", "~/.hermes")))
-    p.add_argument("--workstation", required=True, help="did:key of the workstation's node")
+    p.add_argument("--node", action="append", default=[], required=True,
+                   help="did=url:residency[,residency] (repeatable)")
+    p.add_argument("--workstation", required=True, help="did:key every non-canary profile is pinned to")
     p.add_argument("--canary", type=int, default=20)
     p.add_argument("--canary-node", help="did:key of the canary node (omit: no canaries)")
-    p.add_argument("--apply", action="store_true")
-    p.add_argument("--lease-url", default=os.environ.get("KOTOBA_LEASE_URL"))
-    p.add_argument("--json", action="store_true", help="print the full registry")
+    p.add_argument("--operator-key", default=os.path.expanduser("~/.kotoba/operator.key"))
+    p.add_argument("--write", help="also write the signed manifest to this path")
+    p.add_argument("--apply", metavar="GATEWAY_URL", help="PUT the manifest to this gateway")
+    p.add_argument("--json", action="store_true", help="print the full manifest")
     a = p.parse_args(argv)
+
+    operator = NodeIdentity.load_or_create(a.operator_key)
     result = plan(a.home, a.workstation, a.canary, a.canary_node)
+    manifest = build_manifest(operator, [parse_node(n) for n in a.node], result["profiles"])
     if a.json:
-        print(json.dumps(result, indent=2))
+        print(json.dumps(manifest, indent=2))
     else:
-        print(json.dumps(result["summary"]))
+        print(json.dumps({**result["summary"], "operator": operator.did, "version": manifest["version"]}))
         for name in result["canaries"]:
             print("canary", name)
+    if a.write:
+        with open(a.write, "w", encoding="utf-8") as f:
+            json.dump(manifest, f)
     if a.apply:
-        if not a.lease_url:
-            raise SystemExit("--lease-url (or KOTOBA_LEASE_URL) is required for --apply")
-        print(apply(a.lease_url, result["profiles"]))
+        print(publish(a.apply, a.home, manifest))
     return 0
 
 
