@@ -14,6 +14,9 @@
 ;; cron/executions.db). Profiles whose .env holds keys or tokens are
 ;; "attested", so they are never placed on an anonymous node.
 ;;
+;; --hold FILE marks profiles no node may tick (a signed, reversible pause:
+;; drop them from the file and publish again). Their jobs.json is untouched.
+;;
 ;; The manifest is signed with the operator key (~/.kotoba/operator.key,
 ;; created on first use; nodes trust its did via --operator-did) and carries a
 ;; millisecond version, so a newer plan always supersedes an older one.
@@ -73,6 +76,21 @@
               "canaries" (len canaries)
               "history_profiles" (get full "profiles_with_history")}})
 
+(defn read-ids [path]
+  (if (not path)
+      #{}
+      (with [f (open path :encoding "utf-8")]
+        (sfor line f :setv id (.strip line) :if (and id (not (.startswith id "#"))) id))))
+
+(defn apply-holds [profiles ids reason]
+  "Mark the records whose id is in ids as held. Returns how many were."
+  (setv n 0)
+  (for [record profiles]
+    (when (in (get record "id") ids)
+      (setv (get record "hold") reason)
+      (+= n 1)))
+  n)
+
 (defn parse-node [spec]
   "did=url:residency1,residency2 -> manifest node entry."
   (setv [did rest] (.split spec "=" 1))
@@ -111,13 +129,18 @@
   (.add_argument p "--canary" :type int :default 20)
   (.add_argument p "--canary-node" :help "did:key of the canary node (omit: no canaries)")
   (.add_argument p "--operator-key" :default (os.path.expanduser "~/.kotoba/operator.key"))
+  (.add_argument p "--hold" :metavar "FILE"
+                 :help "profile ids (one per line) no node may tick; jobs.json is untouched")
+  (.add_argument p "--hold-reason" :default "held by operator")
   (.add_argument p "--write" :help "also write the signed manifest to this path")
   (.add_argument p "--apply" :metavar "GATEWAY_URL" :help "PUT the manifest to this gateway")
   (.add_argument p "--json" :action "store_true" :help "print the full manifest")
   (setv a (.parse_args p argv)
         operator (NodeIdentity.load-or-create a.operator-key)
         result (plan a.home a.workstation a.canary a.canary-node)
+        held (apply-holds (get result "profiles") (read-ids a.hold) a.hold-reason)
         manifest (build-manifest operator (lfor n a.node (parse-node n)) (get result "profiles")))
+  (setv (get result "summary" "held") held)
   (if a.json
       (print (json.dumps manifest :indent 2))
       (do (print (json.dumps {#** (get result "summary")
